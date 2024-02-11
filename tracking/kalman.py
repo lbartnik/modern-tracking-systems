@@ -6,14 +6,20 @@ __all__ = ['KalmanFilter']
 
 
 class KalmanFilter:
-    def __init__(self, x=np.zeros(9), P=np.eye(9), R=np.eye(3), motion_model=None):
+    def __init__(self, R=np.eye(3), motion_model=None):
         self.dim = 3                                                  # number of spatial dimensions
-        self.R = np.array(R); self.R.shape = (self.dim, self.dim)     # measurement noise
-        self.x = np.array(x); self.x.shape = (self.dim*3)             # state (mean)
-        self.P = np.array(P); self.P.shape = (self.dim*3, self.dim*3) # state (covariance)
+        self.x = np.zeros(9)                                          # state (mean)
+        self.P = np.eye(9)                                            # state (covariance)
         self.H = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],               # measurement matrix
                            [0, 1, 0, 0, 0, 0, 0, 0, 0],
                            [0, 0, 1, 0, 0, 0, 0, 0, 0]])
+        
+        # measurement noise
+        if np.isscalar(R):
+            self.R = np.eye(3) * R
+        else:
+            self.R = np.array(R); self.R.shape = (self.dim, self.dim)
+
         self.motion_model = ConstantAccelerationModel() if motion_model is None else motion_model
 
     def initialize(self, x, P):

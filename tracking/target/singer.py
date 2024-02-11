@@ -6,22 +6,20 @@ class SingerTarget:
     """Generates sample target trajectory using the Singer Acceleration Model.
     """
 
-    def __init__(self, tau: float, sigma: float, T: float = 1, seed: float = 0):
+    def __init__(self, tau: float, sigma: float, T: float = 1):
         """Initialize trajectory generator.
 
         Args:
             tau (float): target maneuver time constant
             sigma (float): target maneuver standard deviation
             T (float, optional): Sampling time. Defaults to 1.
-            seed (int, optional): Random seed. Defaults to 0.
         """
         self.tau = tau
         self.sigma = sigma
         self.T = T
-        self.seed = seed
 
-    def positions(self, time: ArrayLike) -> np.ndarray:
-        rnd = np.random.default_rng(seed=self.seed)
+    def positions(self, time: ArrayLike, seed: float = 0) -> np.ndarray:
+        rnd = np.random.default_rng(seed=seed)
 
         # sampling interval
         if len(np.unique(np.diff(time))) != 1:
@@ -37,7 +35,7 @@ class SingerTarget:
             dims[0][:,1], dims[1][:,1], dims[2][:,1],
             dims[0][:,2], dims[1][:,2], dims[2][:,2]]
         
-        return np.array(ret).T
+        return (np.array(ret).T)[:,:3]
 
 
 def _acceleration(tau, sigma, T, n=100, rnd=None):
@@ -82,4 +80,4 @@ def sample_singer(tau: float, sigma: float, T: float, n=100, seed=None) -> np.nd
     Returns:
         np.ndarray: Array of sampled positions, shape: (n, 3)
     """
-    return SingerTarget(tau, sigma, T, seed).positions(np.arange(n, step=T))
+    return SingerTarget(tau, sigma, T).positions(np.arange(n, step=T), seed)

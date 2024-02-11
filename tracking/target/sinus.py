@@ -6,7 +6,7 @@ class SinusTarget:
         self.speed = speed
         self.range = range
 
-    def positions(self, t):
+    def positions(self, t, seed=0):
         t = np.array(t)
         x = np.sin(t / 180 * np.pi * self.speed) * self.range
         y = np.full_like(t, 0)
