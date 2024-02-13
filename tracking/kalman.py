@@ -13,6 +13,7 @@ class KalmanFilter:
         self.H = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],               # measurement matrix
                            [0, 1, 0, 0, 0, 0, 0, 0, 0],
                            [0, 0, 1, 0, 0, 0, 0, 0, 0]])
+        self.x_hat = self.x                                           # most recent predicted state, used to evaluate prediction error
         
         # measurement noise
         if np.isscalar(R):
@@ -32,6 +33,7 @@ class KalmanFilter:
         F = self.motion_model.F(dt)
         Q = self.motion_model.Q(dt)
         self.x = F @ self.x
+        self.x_hat = np.copy(self.x)
         self.P = F @ self.P @ F.T + Q
 
     # update state with a measurement

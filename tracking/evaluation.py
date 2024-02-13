@@ -1,6 +1,38 @@
 import numpy as np
 import pandas as pd
 
+from .kalman import KalmanFilter
+
+
+class EvaluationTask:
+    def __init__(self, target, motion_model, T: float, n: int, z_sigma: float, R: float, seed: int):
+        self.target = target
+        self.motion_model = motion_model
+        self.T = T
+        self.n = n
+        self.z_sigma = z_sigma
+        self.R = R
+        self.seed = seed
+
+
+class EvaluationResult:
+    def __init__(self, task: EvaluationTask):
+        self.task = task
+
+
+def execute(task: EvaluationTask) -> EvaluationResult:
+    # calculate target positions over time
+    positions = task.target.positions(T=task.T, n=task.n, seed=task.seed)
+
+    # transform positions into measurements
+    z_var = task.z_sigma**2
+    meas = _cartesian_measurements(positions, np.diag([z_var, z_var, z_var]))
+
+    # initialize track state
+    kf = KalmanFilter(R=task.R, motion_model=task.motion_model)
+    kf.initialize(meas[0,:])
+
+
 
 def evaluate(target, kf, time=np.arange(0, 100), z_sigma=.1, seed=0):
     # calculate target positions over time
@@ -25,9 +57,9 @@ def evaluate(target, kf, time=np.arange(0, 100), z_sigma=.1, seed=0):
     
     for dt, z, true_pos in zip(np.diff(time), meas, positions):
         kf.predict(dt)
-        pos.append(kf.x[:3])
-        vel.append(kf.x[3:6])
-        err.append(kf.x[:3] - true_pos)
+        pos.append(kf.x_hat[:3])
+        vel.append(kf.x_hat[3:6])
+        err.append(kf.x_hat[:3] - true_pos)
         kf.update(z)
     
     return positions, np.array(pos), np.array(vel), np.array(err)
