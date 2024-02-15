@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import ArrayLike
 from .motion import ConstantAccelerationModel
 
 
@@ -7,7 +8,8 @@ __all__ = ['KalmanFilter']
 
 class KalmanFilter:
     def __init__(self, R=np.eye(3), motion_model=None):
-        self.dim = 3                                                  # number of spatial dimensions
+        self.spatial_dim = 3                                          # number of spatial dimensions
+        self.state_dim = 9                                            # dimensionality of the state
         self.x = np.zeros(9)                                          # state (mean)
         self.P = np.eye(9)                                            # state (covariance)
         self.H = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],               # measurement matrix
@@ -17,11 +19,14 @@ class KalmanFilter:
         
         # measurement noise
         if np.isscalar(R):
-            self.R = np.eye(3) * R
+            self.R = np.eye(self.spatial_dim) * R
         else:
-            self.R = np.array(R); self.R.shape = (self.dim, self.dim)
+            self.R = np.array(R); self.R.shape = (self.spatial_dim, self.spatial_dim)
 
         self.motion_model = ConstantAccelerationModel() if motion_model is None else motion_model
+        
+        assert self.motion_model.spatial_dim == self.spatial_dim
+        assert self.motion_model.state_dim == self.state_dim
 
     def initialize(self, x, P):
         self.x[:len(x)] = x
@@ -32,13 +37,16 @@ class KalmanFilter:
     def predict(self, dt):
         F = self.motion_model.F(dt)
         Q = self.motion_model.Q(dt)
+        
         self.x = F @ self.x
         self.x_hat = np.copy(self.x)
+        
         self.P = F @ self.P @ F.T + Q
+        self.P_hat = np.copy(self.P)
 
     # update state with a measurement
     def update(self, z):
-        z = np.array(z); z.shape = self.dim # measurement
+        z = np.array(z); z.shape = self.spatial_dim # measurement
 
         # Kalman gain
         # K = P*H (H*P*H + R)
@@ -48,7 +56,7 @@ class KalmanFilter:
         # X = X + K(z - H*X)
         self.x = self.x + K @ (z - self.H @ self.x)
 
-        I = np.eye(9)
+        I = np.eye(self.state_dim)
         
         # filtered state (covariance)
         # P = (I - K*H) * P * (I - K*H) + K*R*K

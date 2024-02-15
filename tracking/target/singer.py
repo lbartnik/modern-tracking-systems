@@ -1,6 +1,7 @@
 import numpy as np
+import pandas as pd
 from numpy.typing import ArrayLike
-
+from ..util import to_df
 
 class SingerTarget:
     """Generates sample target trajectory using the Singer Acceleration Model.
@@ -17,18 +18,18 @@ class SingerTarget:
         self.tau = tau
         self.sigma = sigma
         self.T = T
+    
+    @property
+    def name(self):
+        """Target model name"""
+        return f"singer_{self.tau}_{self.sigma}"
 
-    def positions(self, time: ArrayLike, seed: float = 0) -> np.ndarray:
+    def positions(self, T: float, n: int, seed: float = 0) -> np.ndarray:
         rnd = np.random.default_rng(seed=seed)
-
-        # sampling interval
-        if len(np.unique(np.diff(time))) != 1:
-            raise ValueError(f"Single acceleration model requires constant time step, got {np.diff(time)}")
-        
-        T = np.min(np.diff(time))
+        time = np.arange(n) * T
 
         # generate position, velocity and acceleration independently in each dimension
-        dims = [_calculate_dimension(time, _acceleration(self.tau, self.sigma, T, len(time), rnd)) for i in range(3)]
+        dims = [_calculate_dimension(time, _acceleration(self.tau, self.sigma, T, len(time), rnd)) for _ in range(3)]
 
         # reshuffle to keep positions, velocities, and accelerations grouped
         ret = [dims[0][:,0], dims[1][:,0], dims[2][:,0],
@@ -36,6 +37,10 @@ class SingerTarget:
             dims[0][:,2], dims[1][:,2], dims[2][:,2]]
         
         return (np.array(ret).T)[:,:3]
+
+    def positions_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
+        return to_df(self.positions(T, n, seed), columns=['x','y','z'])
+
 
 
 def _acceleration(tau, sigma, T, n=100, rnd=None):

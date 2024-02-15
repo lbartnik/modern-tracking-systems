@@ -17,6 +17,13 @@ class SingerAccelerationModel:
         """
         self.tau = tau
         self.sigma = sigma
+        self.state_dim = 9
+        self.spatial_dim = 3
+    
+    @property
+    def name(self):
+        """Motion model name"""
+        return f"singer_{self.tau}_{self.sigma}"
         
     def F(self, dt):
         beta = 1/self.tau
@@ -67,3 +74,7 @@ class SingerAccelerationModel:
                          [0, q_31, 0, 0, q_32, 0, 0, q_33, 0],
                          [0, 0, q_31, 0, 0, q_32, 0, 0, q_33]]) \
                 * 2 * self.sigma**2 / self.tau
+
+
+def singer_acceleration_models(*args):
+    return [SingerAccelerationModel(tau, sigma) for tau, sigma in args]

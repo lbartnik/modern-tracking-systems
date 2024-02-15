@@ -1,2 +1,2 @@
 from .constacc import ConstantAccelerationModel
-from .singer import SingerAccelerationModel
+from .singer import SingerAccelerationModel, singer_acceleration_models

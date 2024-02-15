@@ -14,6 +14,11 @@ class SinusTarget:
         self.speed = speed
         self.heading_change_rate = heading_change_rate
 
+    @property
+    def name(self):
+        """Target model name"""
+        return "sinus"
+
     def positions(self, T: float = 1, n: int = 400, seed: int = 0) -> np.ndarray:
         """Generate target positions.
 

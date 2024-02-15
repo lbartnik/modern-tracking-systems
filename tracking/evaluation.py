@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import itertools as it
+from typing import List
 
 from .kalman import KalmanFilter
 
@@ -14,10 +16,19 @@ class EvaluationTask:
         self.R = R
         self.seed = seed
 
+    def __iter__(self):
+        yield 'target', self.target.name
+        yield 'motion', self.motion_model.name
+        yield 'z_sigma', self.z_sigma
+        yield 'seed', self.seed
+        yield 'R', self.R
 
 class EvaluationResult:
-    def __init__(self, task: EvaluationTask):
+    def __init__(self, task: EvaluationTask, truth: np.ndarray, x_hat: np.ndarray, P_hat: np.ndarray):
         self.task = task
+        self.truth = truth
+        self.x_hat = x_hat
+        self.P_hat = P_hat
 
 
 def execute(task: EvaluationTask) -> EvaluationResult:
@@ -30,9 +41,67 @@ def execute(task: EvaluationTask) -> EvaluationResult:
 
     # initialize track state
     kf = KalmanFilter(R=task.R, motion_model=task.motion_model)
-    kf.initialize(meas[0,:])
+    kf.initialize(meas[0,:], np.eye(meas.shape[1]) * z_var)
+
+    # iterate and collect state estimates
+    x_hat, P_hat = [], []
+    for z in meas:
+        kf.predict(task.T)
+        x_hat.append(kf.x_hat)
+        P_hat.append(kf.P_hat)
+        kf.update(z)
+    
+    return EvaluationResult(task, positions, np.array(x_hat), np.array(P_hat))
 
 
+def _cartesian_measurements(positions, noise_covariance):
+    noise_mean = np.full(positions.shape[1], 0)
+    noise = np.random.multivariate_normal(noise_mean, noise_covariance, size=positions.shape[0])
+    return positions + noise
+
+
+def _as_iterable(x):
+    if hasattr(x, '__iter__'):
+        return x
+    return [x]
+
+
+def monte_carlo(target, motion_model, z_sigma=.1, seeds=range(50), T: float = 1, n: int = 400):
+    # make sure each dimension is iterable
+    target = _as_iterable(target)
+    motion_model = _as_iterable(motion_model)
+    z_sigma = _as_iterable(z_sigma)
+    seeds = _as_iterable(seeds)
+
+    results = []
+
+    # iterate over a Cartesian product of the following dimensions
+    for tg, mm, zs, sd in it.product(target, motion_model, z_sigma, seeds):
+        task = EvaluationTask(tg, mm, T, n, zs, zs, sd)
+        results.append(execute(task))
+    
+    return results
+
+
+def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
+    rows = []
+    for r in results:
+        spatial_dim = r.truth.shape[1]
+        err = r.truth - r.x_hat[:, :spatial_dim]
+
+        row = dict(r.task)
+        row['rmse'] = np.sqrt(np.power(err, 2).sum(axis=1).mean(axis=0))
+        rows.append(row)
+    
+    return pd.DataFrame(rows)
+
+
+def chi_squared(results: List[EvaluationResult]) -> pd.DataFrame:
+    pass
+
+
+
+# ---
 
 def evaluate(target, kf, time=np.arange(0, 100), z_sigma=.1, seed=0):
     # calculate target positions over time
@@ -63,26 +132,3 @@ def evaluate(target, kf, time=np.arange(0, 100), z_sigma=.1, seed=0):
         kf.update(z)
     
     return positions, np.array(pos), np.array(vel), np.array(err)
-
-
-def _cartesian_measurements(positions, noise_covariance):
-    noise_mean = np.full(positions.shape[1], 0)
-    noise = np.random.multivariate_normal(noise_mean, noise_covariance, size=positions.shape[0])
-    return positions + noise
-
-
-def monte_carlo(target, kf, time=np.arange(0, 100), z_sigma=.1, seeds=range(50)):
-    if not isinstance(z_sigma, list):
-        z_sigma = [z_sigma]
-
-    res = []
-    for s in z_sigma:
-        for i, seed in enumerate(seeds):
-            _, _, _, err = evaluate(target, kf, time, s, seed)
-            res.append((s, i, seed, rmse(err)))
-    
-    return pd.DataFrame(res, columns=['z_sigma', 'no', 'seed', 'rmse'])
-
-
-def rmse(err):
-    return np.sqrt(np.power(err, 2).sum(axis=1).mean(axis=0))
