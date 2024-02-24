@@ -48,4 +48,4 @@ class SinusTarget:
         return np.array(positions)
 
     def positions_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
-        return to_df(self.positions(), columns=['x','y','z'])
+        return to_df(self.positions(T, n, seed), columns=['x','y','z'])

@@ -1,2 +1,3 @@
 from .constacc import ConstantAccelerationModel
+from .constvel import ConstantVelocityModel, constant_velocity_models
 from .singer import SingerAccelerationModel, singer_acceleration_models

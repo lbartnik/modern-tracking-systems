@@ -1,14 +1,15 @@
 import numpy as np
 import pandas as pd
 import itertools as it
+from collections import UserList
 from typing import List
 
-from .kalman import KalmanFilter
+from .kalman import KalmanFilter6D, KalmanFilter9D
 
 
 class EvaluationTask:
     def __init__(self, target, motion_model, T: float, n: int, z_sigma: float, R: float, seed: int):
-        self.target = target
+        self.target_model = target
         self.motion_model = motion_model
         self.T = T
         self.n = n
@@ -17,11 +18,23 @@ class EvaluationTask:
         self.seed = seed
 
     def __iter__(self):
-        yield 'target', self.target.name
+        yield 'target', self.target_model.name
         yield 'motion', self.motion_model.name
         yield 'z_sigma', self.z_sigma
         yield 'seed', self.seed
         yield 'R', self.R
+    
+    @property
+    def motion(self):
+        return self.motion_model.name
+    
+    @property
+    def target(self):
+        return self.target_model.name
+    
+    def __repr__(self) -> str:
+        return '{} {}'.format(self.__class__.__name__, dict(self))
+
 
 class EvaluationResult:
     def __init__(self, task: EvaluationTask, truth: np.ndarray, x_hat: np.ndarray, P_hat: np.ndarray):
@@ -29,18 +42,61 @@ class EvaluationResult:
         self.truth = truth
         self.x_hat = x_hat
         self.P_hat = P_hat
+    
+    def __repr__(self) -> str:
+        return '{} {}'.format(self.__class__.__name__, dict(self.task))
+
+
+class EvaluationResultList(UserList):
+    def select(self, **kwargs) -> List[EvaluationResult]:
+        """Select results which match the provided set of parameter values.
+
+        Returns:
+            List[EvaluationResult]: Evaluation results matching the given query.
+        """
+        ans = []
+        for r in self.data:
+            match = [str(getattr(r.task, name)) == str(value) for name, value in kwargs.items()]
+            if all(match):
+                ans.append(r)
+        return EvaluationResultList(ans)
+    
+    def group(self, keys: List[str]) -> List[List[EvaluationResult]]:
+        """Group results by given set of evaluation task parameters.
+
+        Args:
+            keys (List[str]): A list of parameter names.
+
+        Returns:
+            List[EvaluationResult]: List of groups of evaluation results.
+        """
+        if isinstance(keys, str):
+            keys = [keys]          
+        
+        groups = {}
+        for result in self.data:
+            group_id = '_'.join([str(getattr(result.task, key)) for key in keys])
+            groups.setdefault(group_id, []).append(result)
+        
+        return [EvaluationResultList(group) for group in groups.values()]
 
 
 def execute(task: EvaluationTask) -> EvaluationResult:
     # calculate target positions over time
-    positions = task.target.positions(T=task.T, n=task.n, seed=task.seed)
+    positions = task.target_model.positions(T=task.T, n=task.n, seed=task.seed)
 
     # transform positions into measurements
     z_var = task.z_sigma**2
     meas = _cartesian_measurements(positions, np.diag([z_var, z_var, z_var]))
 
+    # pick Kalman Filter of appropriate dimensionality
+    if task.motion_model.state_dim == 9:
+        KF = KalmanFilter9D
+    else:
+        KF = KalmanFilter6D
+    
     # initialize track state
-    kf = KalmanFilter(R=task.R, motion_model=task.motion_model)
+    kf = KF(R=task.R, motion_model=task.motion_model)
     kf.initialize(meas[0,:], np.eye(meas.shape[1]) * z_var)
 
     # iterate and collect state estimates
@@ -77,10 +133,10 @@ def monte_carlo(target, motion_model, z_sigma=.1, seeds=range(50), T: float = 1,
 
     # iterate over a Cartesian product of the following dimensions
     for tg, mm, zs, sd in it.product(target, motion_model, z_sigma, seeds):
-        task = EvaluationTask(tg, mm, T, n, zs, zs, sd)
+        task = EvaluationTask(tg, mm, T, n, zs, zs*zs, sd)
         results.append(execute(task))
     
-    return results
+    return EvaluationResultList(results)
 
 
 def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
@@ -97,7 +153,18 @@ def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
 
 
 def chi_squared(results: List[EvaluationResult]) -> pd.DataFrame:
-    pass
+    ans = []
+    for r in results:
+        diff = r.x_hat[:,:3] - r.truth[:,:3]
+        diff = np.expand_dims(diff, 1)
+
+        P = r.P_hat[:,:3,:3]
+
+        chi_sq = np.matmul(diff, np.linalg.inv(P))
+        chi_sq = np.matmul(chi_sq, np.transpose(diff, (0, 2, 1)))
+
+        ans.append(chi_sq.squeeze())
+    return ans
 
 
 
