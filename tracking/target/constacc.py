@@ -13,13 +13,14 @@ class ConstantAccelerationTarget:
         a = np.array([1, 0, 0]) # velocity direction, unit vector
         self.acceleration = a * acceleration
         self.acceleration_scalar = acceleration
+        self.spatial_dim = 3
 
     @property
     def name(self):
         """Target model name"""
         return f"ca_{self.acceleration_scalar}"
 
-    def positions(self, T: float = 1, n: int = 400, seed: int = 0) -> np.ndarray:
+    def true_states(self, T: float = 1, n: int = 400, seed: int = 0) -> np.ndarray:
         """Generate target positions.
 
         Args:
@@ -33,15 +34,15 @@ class ConstantAccelerationTarget:
         positions = []
         current_pos = np.array([0.0, 0.0, 0.0])
         current_time = 0
-        current_vel = 0
+        current_vel = self.acceleration * 0
 
         for _ in range(n):
-            positions.append(current_pos)
+            positions.append(np.concatenate((current_pos, current_vel, self.acceleration)))
             current_vel += self.acceleration * T
             current_pos = current_pos + current_vel * T + self.acceleration * T**2 / 2
             current_time += T
 
         return np.array(positions)
 
-    def positions_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
-        return to_df(self.positions(T, n, seed), columns=['x','y','z'])
+    def true_states_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
+        return to_df(self.true_states(T, n, seed), columns=['x','y','z','vx','vy','vz','ax','ay','az'])

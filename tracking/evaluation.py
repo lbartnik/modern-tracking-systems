@@ -5,11 +5,12 @@ from collections import UserList
 from typing import List
 
 from .kalman import KalmanFilter6D, KalmanFilter9D
+from .util import to_df
 
 
 class EvaluationTask:
-    def __init__(self, target, motion_model, T: float, n: int, z_sigma: float, R: float, seed: int):
-        self.target_model = target
+    def __init__(self, target_model, motion_model, T: float, n: int, z_sigma: float, R: float, seed: int):
+        self.target_model = target_model
         self.motion_model = motion_model
         self.T = T
         self.n = n
@@ -36,15 +37,26 @@ class EvaluationTask:
         return '{} {}'.format(self.__class__.__name__, dict(self))
 
 
-class EvaluationResult:
+class EvaluationResult(EvaluationTask):
     def __init__(self, task: EvaluationTask, truth: np.ndarray, x_hat: np.ndarray, P_hat: np.ndarray):
-        self.task = task
+        super().__init__(target_model=task.target_model, motion_model=task.motion_model, T=task.T,
+                         n=task.n, z_sigma=task.z_sigma, R=task.R, seed=task.seed)
         self.truth = truth
         self.x_hat = x_hat
         self.P_hat = P_hat
     
     def __repr__(self) -> str:
-        return '{} {}'.format(self.__class__.__name__, dict(self.task))
+        return '{} {}'.format(self.__class__.__name__, dict(self))
+
+    @property
+    def truth_df(self) -> pd.DataFrame:
+        columns=['x', 'y', 'z', 'vx', 'vy', 'vz', 'ax', 'ay', 'az']
+        return to_df(self.truth, columns=columns[:self.truth.shape[1]])
+
+    @property
+    def x_hat_df(self) -> pd.DataFrame:
+        columns=['x', 'y', 'z', 'vx', 'vy', 'vz', 'ax', 'ay', 'az']
+        return to_df(self.x_hat, columns=columns[:self.x_hat.shape[1]])
 
 
 class EvaluationResultList(UserList):
@@ -56,7 +68,7 @@ class EvaluationResultList(UserList):
         """
         ans = []
         for r in self.data:
-            match = [str(getattr(r.task, name)) == str(value) for name, value in kwargs.items()]
+            match = [str(getattr(r, name)) == str(value) for name, value in kwargs.items()]
             if all(match):
                 ans.append(r)
         return EvaluationResultList(ans)
@@ -75,7 +87,7 @@ class EvaluationResultList(UserList):
         
         groups = {}
         for result in self.data:
-            group_id = '_'.join([str(getattr(result.task, key)) for key in keys])
+            group_id = '_'.join([str(getattr(result, key)) for key in keys])
             groups.setdefault(group_id, []).append(result)
         
         return [EvaluationResultList(group) for group in groups.values()]
@@ -83,11 +95,11 @@ class EvaluationResultList(UserList):
 
 def execute(task: EvaluationTask) -> EvaluationResult:
     # calculate target positions over time
-    positions = task.target_model.positions(T=task.T, n=task.n, seed=task.seed)
+    true_states = task.target_model.true_states(T=task.T, n=task.n, seed=task.seed)
 
     # transform positions into measurements
     z_var = task.z_sigma**2
-    meas = _cartesian_measurements(positions, np.diag([z_var, z_var, z_var]))
+    meas = _cartesian_measurements(true_states[:,:3], np.diag([z_var, z_var, z_var]))
 
     # pick Kalman Filter of appropriate dimensionality
     if task.motion_model.state_dim == 9:
@@ -107,7 +119,7 @@ def execute(task: EvaluationTask) -> EvaluationResult:
         P_hat.append(kf.P_hat)
         kf.update(z)
     
-    return EvaluationResult(task, positions, np.array(x_hat), np.array(P_hat))
+    return EvaluationResult(task, true_states, np.array(x_hat), np.array(P_hat))
 
 
 def _cartesian_measurements(positions, noise_covariance):
@@ -133,7 +145,7 @@ def monte_carlo(target, motion_model, z_sigma=.1, seeds=range(50), T: float = 1,
 
     # iterate over a Cartesian product of the following dimensions
     for tg, mm, zs, sd in it.product(target, motion_model, z_sigma, seeds):
-        task = EvaluationTask(tg, mm, T, n, zs, zs*zs, sd)
+        task = EvaluationTask(target_model=tg, motion_model=mm, T=T, n=n, z_sigma=zs, R=zs*zs, seed=sd)
         results.append(execute(task))
     
     return EvaluationResultList(results)
@@ -142,10 +154,10 @@ def monte_carlo(target, motion_model, z_sigma=.1, seeds=range(50), T: float = 1,
 def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
     rows = []
     for r in results:
-        spatial_dim = r.truth.shape[1]
-        err = r.truth - r.x_hat[:, :spatial_dim]
+        spatial_dim = r.target_model.spatial_dim
+        err = r.truth[:, :spatial_dim] - r.x_hat[:, :spatial_dim]
 
-        row = dict(r.task)
+        row = dict(r)
         row['rmse'] = np.sqrt(np.power(err, 2).sum(axis=1).mean(axis=0))
         rows.append(row)
     

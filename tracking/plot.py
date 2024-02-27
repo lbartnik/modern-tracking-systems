@@ -6,7 +6,7 @@ from collections import UserList
 from typing import List, Tuple
 
 from .evaluation import EvaluationResult, EvaluationResultList, rmse
-from .util import to_df
+from .util import to_df, colorscale
 
 
 class Figures(UserList):
@@ -14,6 +14,11 @@ class Figures(UserList):
         for f in self.data:
             f.show()
         return ''
+
+    def update_layout(self, **kwargs):
+        for f in self.data:
+            f.update_layout(**kwargs)
+        return self
 
 
 def boxplot_rmse(results: List[EvaluationResult]) -> go.Figure:
@@ -45,7 +50,7 @@ def plot_position_errors(result: EvaluationResult) -> Figures:
 
 def aggregated_errors(results: EvaluationResultList):
     # aggregate across seeds
-    parameters = set(dict(results[0].task).keys())
+    parameters = set(dict(results[0]).keys())
     parameters.discard('seed')
 
     partial_results = []
@@ -62,7 +67,7 @@ def aggregated_errors(results: EvaluationResultList):
 
         # fill out the rest of columns with values of task parameters
         for parameter in parameters:
-            error_data_frame[parameter] = getattr(group[0].task, parameter)
+            error_data_frame[parameter] = getattr(group[0], parameter)
         
         partial_results.append(error_data_frame)
 
@@ -86,3 +91,43 @@ def plot_aggregated_errors(results: EvaluationResultList):
 
     return Figures([in_time, hist])
 
+
+
+def plot_error_band(results: EvaluationResultList, abs: bool = False) -> go.Figure:
+    fig_pos, fig_vel = go.Figure(), go.Figure()
+    fig_pos.update_layout(title='Position')
+    fig_vel.update_layout(title='Velocity')
+
+    groups = results.group(['motion'])
+
+    col_line = colorscale(len(groups))
+    col_fill = colorscale(len(groups), alpha=.3)
+
+    for i, group in enumerate(groups):
+        pos, vel = [], []
+        for result in group:
+            pos.append(result.x_hat[:,0] - result.truth[:,0])
+            vel.append(result.x_hat[:,3] - result.truth[:,3])
+
+        pos = np.array(pos).T
+        vel = np.array(vel).T
+        time = np.arange(pos.shape[0])
+
+        # this results in a plot resembling plots depicting Euclidean distance in 3D
+        if abs:
+            pos = np.abs(pos)
+            vel = np.abs(vel)
+            
+        plot_name = group[0].motion
+
+        fig_pos.add_trace(go.Scatter(name=plot_name, legendgroup=plot_name, x=time, y=pos.mean(axis=1), mode='lines', line=dict(color=col_line[i])))
+        fig_pos.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=pos.max(axis=1), mode='lines', line=dict(width=0), showlegend=False))
+        fig_pos.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=pos.min(axis=1), mode='lines', line=dict(width=0), showlegend=False,
+                                     fillcolor=col_fill[i], fill='tonexty'))
+    
+        fig_vel.add_trace(go.Scatter(name=plot_name, legendgroup=plot_name, x=time, y=vel.mean(axis=1), mode='lines', line=dict(color=col_line[i])))
+        fig_vel.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=vel.max(axis=1), mode='lines', line=dict(width=0), showlegend=False))
+        fig_vel.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=vel.min(axis=1), mode='lines', line=dict(width=0), showlegend=False,
+                                     fillcolor=col_fill[i], fill='tonexty'))
+    
+    return Figures([fig_pos, fig_vel])

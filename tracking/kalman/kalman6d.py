@@ -38,26 +38,34 @@ class KalmanFilter6D:
         F = self.motion_model.F(dt)
         Q = self.motion_model.Q(dt)
         
-        self.x = F @ self.x
-        self.x_hat = np.copy(self.x)
+        self.x_hat = F @ self.x
+        self.x = np.copy(self.x_hat)
         
-        self.P = F @ self.P @ F.T + Q
-        self.P_hat = np.copy(self.P)
+        self.P_hat = F @ self.P @ F.T + Q
+        self.P = np.copy(self.P_hat)
+
 
     # update state with a measurement
     def update(self, z):
         z = np.array(z); z.shape = self.spatial_dim # measurement
 
+        # innovation covariance
+        # S = H*P*H + R
+        S = self.H @ self.P @ self.H.T + self.R
+
         # Kalman gain
         # K = P*H (H*P*H + R)
-        K = self.P @ self.H.T @ np.linalg.inv(self.H @ self.P @ self.H.T + self.R)
+        K = self.P @ self.H.T @ np.linalg.inv(S)
 
         # filtered state (mean)
         # X = X + K(z - H*X)
-        self.x = self.x + K @ (z - self.H @ self.x)
+        x = self.x + K @ (z - self.H @ self.x)
 
         I = np.eye(self.state_dim)
         
         # filtered state (covariance)
-        # P = (I - K*H) * P * (I - K*H) + K*R*K
-        self.P = (I - K@self.H) @ self.P @ (I - K@self.H).T + K @ self.R @ K.T
+        # P = P - K*S*K
+        P = self.P - K @ S @ K.T
+
+        self.x = x
+        self.P = P

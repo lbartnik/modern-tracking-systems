@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
+import plotly.colors
 from numpy.typing import ArrayLike
+from typing import List
 
 
 def to_df(array: ArrayLike, col_prefix='x', columns=None):
@@ -20,3 +22,16 @@ def to_df(array: ArrayLike, col_prefix='x', columns=None):
         d[name] = column
     
     return pd.DataFrame(d)
+
+def colorscale(n: int, alpha: float = None) -> List[str]:
+    n = int(n)
+    # there need to be at least two colors to generate a color scale
+    if n == 1:
+        n = 2
+    rgb = plotly.colors.sample_colorscale(plotly.colors.sequential.Jet, n)
+    rgb = [name for _, name in plotly.colors.make_colorscale(rgb)]
+
+    if alpha is not None:
+        rgb = [f"rgba{name[3:-1]}, {alpha})" for name in rgb]
+
+    return rgb
