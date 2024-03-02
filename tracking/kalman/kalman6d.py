@@ -16,6 +16,7 @@ class KalmanFilter6D:
                            [0, 1, 0, 0, 0, 0],
                            [0, 0, 1, 0, 0, 0]])
         self.x_hat = self.x                                           # most recent predicted state, used to evaluate prediction error
+        self.K = None                                                 # Kalman gain
         
         # measurement noise
         if np.isscalar(R):
@@ -54,14 +55,12 @@ class KalmanFilter6D:
         S = self.H @ self.P @ self.H.T + self.R
 
         # Kalman gain
-        # K = P*H (H*P*H + R)
+        # K = P*H (H*P*H + R)^-1
         K = self.P @ self.H.T @ np.linalg.inv(S)
 
         # filtered state (mean)
         # X = X + K(z - H*X)
         x = self.x + K @ (z - self.H @ self.x)
-
-        I = np.eye(self.state_dim)
         
         # filtered state (covariance)
         # P = P - K*S*K
@@ -69,3 +68,4 @@ class KalmanFilter6D:
 
         self.x = x
         self.P = P
+        self.K = K

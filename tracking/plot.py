@@ -100,8 +100,8 @@ def plot_error_band(results: EvaluationResultList, abs: bool = False) -> go.Figu
 
     groups = results.group(['motion'])
 
-    col_line = colorscale(len(groups))
-    col_fill = colorscale(len(groups), alpha=.3)
+    col_line = colorscale(n=len(groups))
+    col_fill = colorscale(n=len(groups), alpha=.3)
 
     for i, group in enumerate(groups):
         pos, vel = [], []

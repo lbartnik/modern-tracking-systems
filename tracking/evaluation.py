@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import itertools as it
 from collections import UserList
+from copy import deepcopy
 from typing import List
 
 from .kalman import KalmanFilter6D, KalmanFilter9D
@@ -35,15 +36,17 @@ class EvaluationTask:
     
     def __repr__(self) -> str:
         return '{} {}'.format(self.__class__.__name__, dict(self))
-
+    
 
 class EvaluationResult(EvaluationTask):
-    def __init__(self, task: EvaluationTask, truth: np.ndarray, x_hat: np.ndarray, P_hat: np.ndarray):
+    def __init__(self, task: EvaluationTask, truth: np.ndarray, x_hat: np.ndarray, P_hat: np.ndarray, K: np.ndarray, z: np.ndarray):
         super().__init__(target_model=task.target_model, motion_model=task.motion_model, T=task.T,
                          n=task.n, z_sigma=task.z_sigma, R=task.R, seed=task.seed)
         self.truth = truth
         self.x_hat = x_hat
         self.P_hat = P_hat
+        self.K = K
+        self.z = z
     
     def __repr__(self) -> str:
         return '{} {}'.format(self.__class__.__name__, dict(self))
@@ -57,6 +60,12 @@ class EvaluationResult(EvaluationTask):
     def x_hat_df(self) -> pd.DataFrame:
         columns=['x', 'y', 'z', 'vx', 'vy', 'vz', 'ax', 'ay', 'az']
         return to_df(self.x_hat, columns=columns[:self.x_hat.shape[1]])
+    
+    def copy(self, **kwargs):
+        x = deepcopy(self)
+        for name, value in kwargs.items():
+            setattr(x, name, value)
+        return x
 
 
 class EvaluationResultList(UserList):
@@ -112,14 +121,16 @@ def execute(task: EvaluationTask) -> EvaluationResult:
     kf.initialize(meas[0,:], np.eye(meas.shape[1]) * z_var)
 
     # iterate and collect state estimates
-    x_hat, P_hat = [], []
+    x_hat, P_hat, K = [], [], []
     for z in meas:
         kf.predict(task.T)
         x_hat.append(kf.x_hat)
         P_hat.append(kf.P_hat)
+        
         kf.update(z)
+        K.append(kf.K)
     
-    return EvaluationResult(task, true_states, np.array(x_hat), np.array(P_hat))
+    return EvaluationResult(task, true_states, np.array(x_hat), np.array(P_hat), np.array(K), meas)
 
 
 def _cartesian_measurements(positions, noise_covariance):

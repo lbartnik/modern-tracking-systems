@@ -16,6 +16,7 @@ class KalmanFilter9D:
                            [0, 1, 0, 0, 0, 0, 0, 0, 0],
                            [0, 0, 1, 0, 0, 0, 0, 0, 0]])
         self.x_hat = self.x                                           # most recent predicted state, used to evaluate prediction error
+        self.K = None                                                 # Kalman gain
         
         # measurement noise
         if np.isscalar(R):
@@ -61,3 +62,4 @@ class KalmanFilter9D:
         # filtered state (covariance)
         # P = (I - K*H) * P * (I - K*H) + K*R*K
         self.P = (I - K@self.H) @ self.P @ (I - K@self.H).T + K @ self.R @ K.T
+        self.K = K

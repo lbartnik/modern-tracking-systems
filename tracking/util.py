@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import plotly.colors
 from numpy.typing import ArrayLike
-from typing import List
+from typing import Any, Dict, List, Iterable, Union
 
 
 def to_df(array: ArrayLike, col_prefix='x', columns=None):
@@ -23,7 +23,13 @@ def to_df(array: ArrayLike, col_prefix='x', columns=None):
     
     return pd.DataFrame(d)
 
-def colorscale(n: int, alpha: float = None) -> List[str]:
+def colorscale(x: Iterable[Any] = None, n: int = None, alpha: float = None) -> Union[List[str], Dict[Any, str]]:
+    if x is not None and n is not None:
+        raise Exception("Specify only one, x or n")
+    
+    if x is not None:
+        n = len(x)
+    
     n = int(n)
     # there need to be at least two colors to generate a color scale
     if n == 1:
@@ -34,4 +40,4 @@ def colorscale(n: int, alpha: float = None) -> List[str]:
     if alpha is not None:
         rgb = [f"rgba{name[3:-1]}, {alpha})" for name in rgb]
 
-    return rgb
+    return rgb if x is None else dict(zip(x, rgb))
