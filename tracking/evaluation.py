@@ -5,7 +5,7 @@ from collections import UserList
 from copy import deepcopy
 from typing import List
 
-from .kalman import KalmanFilter6D, KalmanFilter9D
+from .kalman import kalman_pv, kalman_pva
 from .util import to_df
 
 
@@ -112,12 +112,11 @@ def execute(task: EvaluationTask) -> EvaluationResult:
 
     # pick Kalman Filter of appropriate dimensionality
     if task.motion_model.state_dim == 9:
-        KF = KalmanFilter9D
+        kf = kalman_pva(task.motion_model, task.R)
     else:
-        KF = KalmanFilter6D
+        kf = kalman_pv(task.motion_model, task.R)
     
     # initialize track state
-    kf = KF(R=task.R, motion_model=task.motion_model)
     kf.initialize(meas[0,:], np.eye(meas.shape[1]) * z_var)
 
     # iterate and collect state estimates

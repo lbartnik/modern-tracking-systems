@@ -22,6 +22,10 @@ class ConstantVelocityModel:
                          [0, 0, 0, 0, 0, 1]])
 
     def Q(self, dt: float = None):
+        # "Estimation with Applications to Tracking and Navigation", p. 270
+        # process noise for the continuous white noise acceleration (CWNA)
+        # model; velocity changes at discrete time intervals by white-noise
+        # derived values
         dt3 = dt**3 / 3
         dt2 = dt**2 / 2
         return np.array([[dt3, 0, 0, dt2, 0 ,0],

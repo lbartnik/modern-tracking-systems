@@ -33,8 +33,8 @@ class SingerTarget:
 
         # reshuffle to keep positions, velocities, and accelerations grouped
         ret = [dims[0][:,0], dims[1][:,0], dims[2][:,0],
-            dims[0][:,1], dims[1][:,1], dims[2][:,1],
-            dims[0][:,2], dims[1][:,2], dims[2][:,2]]
+               dims[0][:,1], dims[1][:,1], dims[2][:,1],
+               dims[0][:,2], dims[1][:,2], dims[2][:,2]]
         
         return (np.array(ret).T)[:,:3]
 
