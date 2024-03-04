@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from collections import UserList
 from typing import List, Tuple
 
-from .evaluation import EvaluationResult, EvaluationResultList, rmse
+from .evaluation import EvaluationResult, EvaluationResultList, rmse, state_residuals
 from .util import to_df, colorscale
 
 
@@ -32,18 +32,8 @@ def task_names(results: List[EvaluationResult]) -> List[str]:
     pass
 
 
-def position_errors(result: EvaluationResult) -> Figures:
-    col_names = ['x', 'y', 'z']
-
-    data = to_df(result.truth[:,:3] - result.x_hat[:,:3], columns=col_names)
-    data['time'] = np.arange(len(data))
-    data = data.melt(id_vars=['time'], value_vars=col_names, var_name='dim', value_name='diff')
-
-    return data
-
-
 def plot_position_errors(result: EvaluationResult) -> Figures:
-    data = position_errors(result)
+    data = state_residuals(result)
     return Figures([ex.scatter(data, x='time', y='diff', facet_row='dim'),
                     ex.histogram(data, x="diff", facet_row='dim')])
 

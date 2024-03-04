@@ -3,7 +3,7 @@ import pandas as pd
 import itertools as it
 from collections import UserList
 from copy import deepcopy
-from typing import List
+from typing import Dict, List, Tuple, Union
 
 from .kalman import kalman_pv, kalman_pva
 from .util import to_df
@@ -18,6 +18,7 @@ class EvaluationTask:
         self.z_sigma = z_sigma
         self.R = R
         self.seed = seed
+        self.time = np.arange(0, n, T)
 
     def __iter__(self):
         yield 'target', self.target_model.name
@@ -161,19 +162,6 @@ def monte_carlo(target, motion_model, z_sigma=.1, seeds=range(50), T: float = 1,
     return EvaluationResultList(results)
 
 
-def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
-    rows = []
-    for r in results:
-        spatial_dim = r.target_model.spatial_dim
-        err = r.truth[:, :spatial_dim] - r.x_hat[:, :spatial_dim]
-
-        row = dict(r)
-        row['rmse'] = np.sqrt(np.power(err, 2).sum(axis=1).mean(axis=0))
-        rows.append(row)
-    
-    return pd.DataFrame(rows)
-
-
 def chi_squared(results: List[EvaluationResult]) -> pd.DataFrame:
     ans = []
     for r in results:
@@ -189,35 +177,64 @@ def chi_squared(results: List[EvaluationResult]) -> pd.DataFrame:
     return ans
 
 
+def state_residuals_np(results: Union[EvaluationResult,EvaluationResultList]) -> List[Tuple[Dict, np.ndarray]]:
+    # each entry in the list is a list of results 
+    if type(results) == EvaluationResult:
+        groups = [[results]]
+    else:
+        # aggregate across seeds
+        parameters = set(dict(results[0]).keys())
+        parameters.discard('seed')
+        groups = results.group(parameters)
 
-# ---
+    ans = []
+    for group in groups:
+        for r in group:
+            dims = min(r.truth.shape[1], r.x_hat.shape[1])
+            data = r.truth[:,:dims] - r.x_hat[:,:dims]
+            ans.append((dict(r), data))
+    return ans
 
-def evaluate(target, kf, time=np.arange(0, 100), z_sigma=.1, seed=0):
-    # calculate target positions over time
-    time = np.array(time)
-    positions = target.positions(time, seed=0)
-    
-    # transform positions into measurements
-    z_var = z_sigma*z_sigma
-    meas = _cartesian_measurements(positions, np.diag([z_var, z_var, z_var]))
-    
-    # initialize track state
-    mean = np.full(6, 0)
-    mean[:3] = meas[0,:]
-    cov = np.diag(np.full(6, z_var))
-    
-    kf.initialize(mean, cov)
 
-    # iterate
-    err = []
-    pos = []
-    vel = []
+def state_residuals(results: Union[EvaluationResult,EvaluationResultList]) -> pd.DataFrame:
+    col_names = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'ax', 'ay', 'az']
+
+    ans = []
+    for params, data in state_residuals_np(results):
+        data = to_df(data, columns=col_names[:data.shape[1]])
+        data['time'] = np.arange(len(data))
+        for key, value in dict(params).items():
+            data[key] = value
+        ans.append(data)
+
+    # final transformations: combine data frames into one, melt, add dimensions category
+    data = pd.concat(ans)
+
+    id_vars = set(data.columns).difference(col_names)
+    value_vars = set(data.columns).intersection(col_names)
+    data = data.melt(id_vars=id_vars, value_vars=value_vars, var_name='state_dim', value_name='residual')
     
-    for dt, z, true_pos in zip(np.diff(time), meas, positions):
-        kf.predict(dt)
-        pos.append(kf.x_hat[:3])
-        vel.append(kf.x_hat[3:6])
-        err.append(kf.x_hat[:3] - true_pos)
-        kf.update(z)
-    
-    return positions, np.array(pos), np.array(vel), np.array(err)
+    data['category'] = data.state_dim.map(dict(
+                            x='position', y='position', z='position',
+                            vx='velocity', vy='velocity', vz='velocity',
+                            ax='acceleration', ay='acceleration', az='acceleration'))
+    data['dim'] = data.state_dim.map(dict(x='x', y='y', z='z', vx='x', vy='y', vz='z', ax='x', ay='y', az='z'))
+
+    return data
+
+
+
+def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
+    rows = []
+    for params, data in state_residuals_np(results):
+        row = deepcopy(params)
+        row['category'] = 'position'
+        row['rmse'] = np.sqrt(np.power(data[:,:3], 2).sum(axis=1).mean(axis=0))
+        rows.append(row)
+
+        row = deepcopy(params)
+        row['category'] = 'velocity'
+        row['rmse'] = np.sqrt(np.power(data[:,3:], 2).sum(axis=1).mean(axis=0))
+        rows.append(row)
+
+    return pd.DataFrame(rows)
