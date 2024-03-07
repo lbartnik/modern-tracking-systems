@@ -60,7 +60,9 @@ class EvaluationResult(EvaluationTask):
     @property
     def x_hat_df(self) -> pd.DataFrame:
         columns=['x', 'y', 'z', 'vx', 'vy', 'vz', 'ax', 'ay', 'az']
-        return to_df(self.x_hat, columns=columns[:self.x_hat.shape[1]])
+        ans = to_df(self.x_hat, columns=columns[:self.x_hat.shape[1]])
+        ans['time'] = np.arange(len(ans))
+        return ans
     
     def copy(self, **kwargs):
         x = deepcopy(self)
@@ -124,7 +126,7 @@ def execute(task: EvaluationTask) -> EvaluationResult:
     x_hat, P_hat, K = [], [], []
     for z in meas:
         kf.predict(task.T)
-        x_hat.append(kf.x_hat)
+        x_hat.append(np.squeeze(kf.x_hat))
         P_hat.append(kf.P_hat)
         
         kf.update(z)
@@ -136,6 +138,7 @@ def execute(task: EvaluationTask) -> EvaluationResult:
 def _cartesian_measurements(positions, noise_covariance):
     noise_mean = np.full(positions.shape[1], 0)
     noise = np.random.multivariate_normal(noise_mean, noise_covariance, size=positions.shape[0])
+    assert positions.shape == noise.shape
     return positions + noise
 
 

@@ -20,7 +20,7 @@ class ConstantVelocityTarget:
         return "cv"
 
     def true_states(self, T: float = 1, n: int = 400, seed: int = 0) -> np.ndarray:
-        """Generate target positions.
+        """Generate target states.
 
         Args:
             T (float): Sampling interval.
@@ -28,19 +28,19 @@ class ConstantVelocityTarget:
             seed (int, optional): Random seed. Defaults to 0.
 
         Returns:
-            np.ndarray: (n, 3) array of positions.
+            np.ndarray: (n, 6) array of states.
         """
-        positions = []
+        states = []
         current_pos = np.array([0.0, 0.0, 0.0])
         current_time = 0
         vel = self.velocity * self.speed
 
         for _ in range(n):
-            positions.append(np.concatenate((current_pos, vel)))
+            states.append(np.concatenate((current_pos, vel)))
             current_pos = current_pos + vel * T
             current_time += T
 
-        return np.array(positions)
+        return np.array(states)
 
     def true_states_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
         return to_df(self.true_states(T, n, seed), columns=['x','y','z', 'vx', 'vy', 'vz'])

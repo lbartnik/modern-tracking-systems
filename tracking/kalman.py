@@ -8,20 +8,20 @@ __all__ = ['KalmanFilter', 'kalman_pv', 'kalman_pva']
 
 class KalmanFilter:
     def __init__(self, state_dim: int):
-        self.spatial_dim = None      # number of spatial dimensions
-        self.state_dim = state_dim   # dimensionality of the state
-        self.x = np.zeros(state_dim) # state (mean)
-        self.P = np.eye(state_dim)   # state (covariance)
-        self.H = None                # measurement matrix
-        self.R = None                # measurement noise
-        self.K = None                # Kalman gain
-        self.motion_model = None     # motion model        
+        self.spatial_dim = None           # number of spatial dimensions
+        self.state_dim = state_dim        # dimensionality of the state
+        self.x = np.zeros((state_dim, 1)) # state (mean); column vector
+        self.P = np.eye(state_dim)        # state (covariance)
+        self.H = None                     # measurement matrix
+        self.R = None                     # measurement noise
+        self.K = None                     # Kalman gain
+        self.motion_model = None          # motion model        
 
-        self.x_hat = self.x          # most recent predicted state, used to evaluate prediction error
-        self.P_hat = self.P          # most recent predicted state covariance
+        self.x_hat = self.x               # most recent predicted state, used to evaluate prediction error
+        self.P_hat = self.P               # most recent predicted state covariance
 
     def initialize(self, x, P):
-        self.x[:len(x)] = x
+        self.x[:len(x),0] = x
         r, c = P.shape
         self.P[:r,:c] = P
     
@@ -39,7 +39,7 @@ class KalmanFilter:
 
     # update state with a measurement
     def update(self, z):
-        z = np.array(z); z.shape = self.spatial_dim # measurement
+        z = np.array(z); z.shape = (self.spatial_dim, 1) # measurement, column vector
 
         # innovation covariance
         # S = H*P*H + R
