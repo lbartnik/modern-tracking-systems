@@ -102,7 +102,20 @@ class EvaluationResultList(UserList):
             group_id = '_'.join([str(getattr(result, key)) for key in keys])
             groups.setdefault(group_id, []).append(result)
         
-        return [EvaluationResultList(group) for group in groups.values()]
+        return GroupedEvaluationResultList([EvaluationResultList(group) for group in groups.values()])
+
+
+class GroupedEvaluationResultList(UserList):
+    def apply(self, fun):
+        return [(group, fun(group)) for group in self.data]
+    
+    def apply_df(self, fun):
+        parts = []
+        for group, result in self.apply(fun):
+            for key, value in dict(group[0]).items():
+                result[key] = value
+            parts.append(result)
+        return pd.concat(parts, axis=0).reset_index()
 
 
 def execute(task: EvaluationTask) -> EvaluationResult:
@@ -111,7 +124,7 @@ def execute(task: EvaluationTask) -> EvaluationResult:
 
     # transform positions into measurements
     z_var = task.z_sigma**2
-    meas = _cartesian_measurements(true_states[:,:3], np.diag([z_var, z_var, z_var]))
+    meas = _cartesian_measurements(true_states[:,:3], np.diag([z_var, z_var, z_var]), task.seed)
 
     # pick Kalman Filter of appropriate dimensionality
     if task.motion_model.state_dim == 9:
@@ -135,9 +148,10 @@ def execute(task: EvaluationTask) -> EvaluationResult:
     return EvaluationResult(task, true_states, np.array(x_hat), np.array(P_hat), np.array(K), meas)
 
 
-def _cartesian_measurements(positions, noise_covariance):
+def _cartesian_measurements(positions, noise_covariance, seed):
+    rnd = np.random.default_rng(seed=seed)
     noise_mean = np.full(positions.shape[1], 0)
-    noise = np.random.multivariate_normal(noise_mean, noise_covariance, size=positions.shape[0])
+    noise = rnd.multivariate_normal(noise_mean, noise_covariance, size=positions.shape[0])
     assert positions.shape == noise.shape
     return positions + noise
 
