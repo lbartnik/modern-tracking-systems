@@ -5,7 +5,7 @@ from collections import UserList
 from copy import deepcopy
 from typing import Dict, List, Tuple, Union
 
-from .kalman import kalman_pv, kalman_pva
+from .kalman.filter import kalman_pv, kalman_pva
 from .util import to_df
 
 
@@ -85,37 +85,57 @@ class EvaluationResultList(UserList):
                 ans.append(r)
         return EvaluationResultList(ans)
     
-    def group(self, keys: List[str]) -> List[List[EvaluationResult]]:
+    def group_by(self, include: List[str] = None, exclude: List[str] = None) -> List[List[EvaluationResult]]:
         """Group results by given set of evaluation task parameters.
 
+        Either `include` or `exclude` must be provided but not both.
+
         Args:
-            keys (List[str]): A list of parameter names.
+            include (List[str], optional): A list of parameter names to group by.
+            exclude (List[str], optional): A list of parameter names not to group by.
 
         Returns:
             List[EvaluationResult]: List of groups of evaluation results.
         """
-        if isinstance(keys, str):
-            keys = [keys]          
+        if include is not None and exclude is not None:
+            raise Exception("Either `include` or `exclude` must be provided but not both.")
+
+        if include is not None:
+            if isinstance(include, str):
+                include = [include]
+        else:
+            if isinstance(exclude, str):
+                exclude = [exclude]
+            include = [key for key in dict(self.data[0]).keys() if key not in exclude]
         
+        # now perform the actual grouping
         groups = {}
         for result in self.data:
-            group_id = '_'.join([str(getattr(result, key)) for key in keys])
+            group_id = '_'.join([str(getattr(result, key)) for key in include])
             groups.setdefault(group_id, []).append(result)
         
-        return GroupedEvaluationResultList([EvaluationResultList(group) for group in groups.values()])
+        ans = GroupedEvaluationResultList([EvaluationResultList(group) for group in groups.values()])
+        ans.include = include
+        return ans
 
 
 class GroupedEvaluationResultList(UserList):
+    include: List[str] = None
+
     def apply(self, fun):
         return [(group, fun(group)) for group in self.data]
     
     def apply_df(self, fun):
         parts = []
         for group, result in self.apply(fun):
-            for key, value in dict(group[0]).items():
-                result[key] = value
+            d = dict(group[0])
+            for key in self.include:
+                result[key] = d[key]
             parts.append(result)
-        return pd.concat(parts, axis=0).reset_index()
+        return pd.concat(parts, axis=0).reset_index(drop=True)
+
+    def __repr__(self) -> str:
+        return '{}: {} groups on {}'.format(self.__class__.__name__, len(self.data), self.include)
 
 
 def execute(task: EvaluationTask) -> EvaluationResult:

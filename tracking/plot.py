@@ -2,10 +2,11 @@ import numpy as np
 import pandas as pd
 import plotly.express as ex
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from collections import UserList
 from typing import List, Tuple
 
-from .evaluation import EvaluationResult, EvaluationResultList, rmse, state_residuals
+from .evaluation import EvaluationResult, EvaluationResultList, GroupedEvaluationResultList, rmse, state_residuals
 from .util import to_df, colorscale
 
 
@@ -83,17 +84,20 @@ def plot_aggregated_errors(results: EvaluationResultList):
 
 
 
-def plot_error_band(results: EvaluationResultList, abs: bool = False) -> go.Figure:
-    fig_pos, fig_vel = go.Figure(), go.Figure()
-    fig_pos.update_layout(title='Position')
-    fig_vel.update_layout(title='Velocity')
+def plot_error_band(grouped: GroupedEvaluationResultList, abs: bool = False) -> go.Figure:
+    assert type(grouped) == GroupedEvaluationResultList
 
-    groups = results.group(['motion'])
+    subplot_titles = []
+    for group in grouped:
+        subplot_titles.append(' '.join([str(x) for x in dict(group[0]).values()]))
 
-    col_line = colorscale(n=len(groups))
-    col_fill = colorscale(n=len(groups), alpha=.3)
+    fig = make_subplots(len(grouped), 2, shared_yaxes=False,
+                        subplot_titles=[x for t in subplot_titles for x in [t, '']])
 
-    for i, group in enumerate(groups):
+    col_line = colorscale(n=len(grouped))
+    col_fill = colorscale(n=len(grouped), alpha=.3)
+
+    for i, (title, group) in enumerate(zip(subplot_titles, grouped)):
         pos, vel = [], []
         for result in group:
             pos.append(result.x_hat[:,0] - result.truth[:,0])
@@ -107,17 +111,19 @@ def plot_error_band(results: EvaluationResultList, abs: bool = False) -> go.Figu
         if abs:
             pos = np.abs(pos)
             vel = np.abs(vel)
-            
-        plot_name = group[0].motion
-
-        fig_pos.add_trace(go.Scatter(name=plot_name, legendgroup=plot_name, x=time, y=pos.mean(axis=1), mode='lines', line=dict(color=col_line[i])))
-        fig_pos.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=pos.max(axis=1), mode='lines', line=dict(width=0), showlegend=False))
-        fig_pos.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=pos.min(axis=1), mode='lines', line=dict(width=0), showlegend=False,
-                                     fillcolor=col_fill[i], fill='tonexty'))
+        
+        fig.add_trace(go.Scatter(name=title, legendgroup=title, x=time, y=pos.mean(axis=1), mode='lines', line=dict(color=col_line[i]),
+                                 showlegend=False), row=i+1, col=1)
+        fig.add_trace(go.Scatter(legendgroup=title, x=time, y=pos.max(axis=1), mode='lines', line=dict(width=0), showlegend=False),
+                      row=i+1, col=1)
+        fig.add_trace(go.Scatter(legendgroup=title, x=time, y=pos.min(axis=1), mode='lines', line=dict(width=0), showlegend=False,
+                                     fillcolor=col_fill[i], fill='tonexty'), row=i+1, col=1)
     
-        fig_vel.add_trace(go.Scatter(name=plot_name, legendgroup=plot_name, x=time, y=vel.mean(axis=1), mode='lines', line=dict(color=col_line[i])))
-        fig_vel.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=vel.max(axis=1), mode='lines', line=dict(width=0), showlegend=False))
-        fig_vel.add_trace(go.Scatter(legendgroup=plot_name, x=time, y=vel.min(axis=1), mode='lines', line=dict(width=0), showlegend=False,
-                                     fillcolor=col_fill[i], fill='tonexty'))
+        fig.add_trace(go.Scatter(name=title, legendgroup=title, x=time, y=vel.mean(axis=1), mode='lines', line=dict(color=col_line[i]),
+                                 showlegend=False), row=i+1, col=2)
+        fig.add_trace(go.Scatter(legendgroup=title, x=time, y=vel.max(axis=1), mode='lines', line=dict(width=0), showlegend=False),
+                      row=i+1, col=2)
+        fig.add_trace(go.Scatter(legendgroup=title, x=time, y=vel.min(axis=1), mode='lines', line=dict(width=0), showlegend=False,
+                                     fillcolor=col_fill[i], fill='tonexty'), row=i+1, col=2)
     
-    return Figures([fig_pos, fig_vel])
+    return fig
