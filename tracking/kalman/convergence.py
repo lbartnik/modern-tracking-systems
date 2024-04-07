@@ -2,6 +2,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from typing import Union
 
+import sympy.core.numbers as scn
 from sympy.solvers import solve, solveset, nsolve, nonlinsolve
 from sympy import Symbol, symbols, N
 from sympy.matrices import Matrix
@@ -95,12 +96,24 @@ def kalman_gain_pv_algebraic(R: ArrayLike, Q: ArrayLike, t: float = 1, n: int = 
 
     # find real-numbered solution consisting of positive numbers and return it as floats
     for solution in res:
-        if any([s.is_imaginary for s in solution]):
-            continue
-        a, b, c = [s.evalf() for s in solution]
-        if a < 0 or b < 0 or c < 0:
-            continue
-        subs = {Px: a, Pv: b, Pxv: c}
-        return np.asarray(K.evalf(subs=subs), dtype=float)
+        if real_and_positive(solution):
+            a, b, c = [s.evalf() for s in solution]
+            subs = {Px: a, Pv: b, Pxv: c}
+            return np.asarray(K.evalf(subs=subs), dtype=float)
     
     raise Exception("No real-numbered positive solution found")
+
+def _is_imaginary(x):
+    if isinstance(x, scn.ImaginaryUnit):
+        return True
+    if isinstance(x, scn.Float):
+        return x.is_imaginary
+    return any([_is_imaginary(y) for y in x.args])
+
+
+def real_and_positive(solution):
+    if any([_is_imaginary(s) for s in solution]):
+        return False
+    if any([s.evalf() < 0 for s in solution]):
+        return False
+    return True
