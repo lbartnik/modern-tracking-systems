@@ -42,7 +42,7 @@ def _as_array(x: Union[float, ArrayLike], a: ArrayLike) -> np.ndarray:
         return a * float(x)
     else:
         x = np.array(x)
-        x.shape = a.shape
+        assert x.shape == a.shape
         return x
 
 
