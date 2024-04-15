@@ -7,8 +7,20 @@ from sympy.solvers import solve, solveset, nsolve, nonlinsolve
 from sympy import Symbol, symbols, N
 from sympy.matrices import Matrix
 
+from typing import Tuple
 
-def kalman_gain_pv(R: Union[float, ArrayLike], Q: Union[float, ArrayLike], t: float = 1, numeric: bool = False) -> np.ndarray:
+
+def kalman_gain_cv(R: Union[float, ArrayLike], Q: Union[float, ArrayLike], t: float = 1, numeric: bool = False) -> np.ndarray:
+    """Calculate limit values for Kalman gain using a Constant Velocity motion
+    model with the given measurement error variance and process noise intensity.
+
+    Args:
+        R (Union[float, ArrayLike]): measurement noise variance
+        Q (Union[float, ArrayLike]): scalar process noise intensity or process noise covariance matrix.
+    
+    Returns:
+        np.ndarray: Kalman gain array.
+    """
     # measurement noise covariance, diagonal with equal variances or as provided
     R = _as_array(R, np.eye(1))
 
@@ -16,12 +28,12 @@ def kalman_gain_pv(R: Union[float, ArrayLike], Q: Union[float, ArrayLike], t: fl
     # model or as provided
     Q = _as_array(Q, np.array([[t**3/3, t**2/2], [t**2/2, t]]))
 
-    K_num = kalman_gain_pv_numeric(R, Q, t)
+    K_num = kalman_gain_cv_numeric(R, Q, t)
     if bool(numeric):
         return K_num
     
     # derive algebraically and make sure that it is close to values derived numerically
-    K_alg = kalman_gain_pv_algebraic(R, Q, t)
+    K_alg = kalman_gain_cv_algebraic(R, Q, t)
     assert np.allclose(K_num, K_alg, rtol=1e-3, atol=1e-6), K_num-K_alg
     return K_alg
 
@@ -46,7 +58,7 @@ def _as_array(x: Union[float, ArrayLike], a: ArrayLike) -> np.ndarray:
         return x
 
 
-def kalman_gain_pv_numeric(R: ArrayLike, Q: ArrayLike, t: float = 1, n: int = 300) -> np.ndarray:
+def kalman_gain_cv_numeric(R: ArrayLike, Q: ArrayLike, t: float = 1, n: int = 300) -> np.ndarray:
     """Derive the limit Kalman gain numerically.
 
     Args:
@@ -75,7 +87,7 @@ def kalman_gain_pv_numeric(R: ArrayLike, Q: ArrayLike, t: float = 1, n: int = 30
     return K
 
 
-def kalman_gain_pv_algebraic(R: ArrayLike, Q: ArrayLike, t: float = 1, n: int = 100) -> np.ndarray:
+def kalman_gain_cv_algebraic(R: ArrayLike, Q: ArrayLike, t: float = 1, n: int = 100) -> np.ndarray:
     Px, Pv, Pxv = symbols("P_x, P_v, P_xv", positive=True, real=True)
     
     # define constants
@@ -117,3 +129,58 @@ def real_and_positive(solution):
     if any([s.evalf() < 0 for s in solution]):
         return False
     return True
+
+
+def cv_estimator_variances(Kx: float, Kv: float, R: float=1, n: int=100, t: float=1) -> Tuple[float, float, float]:
+    """Calculate the variance of position and velocity estimators in the steady-state,
+    given the limit values of Kalman gain (also calculated for the steady-state).
+
+    Args:
+        Kx (float): Kalman gain value for the position estimator.
+        Kv (float): Kalman gain value for the velocity estimator.
+        R (float): Measurement noise variance.
+        n (int, optional): Number of iterations. Defaults to 100.
+        t (float, optional): Sampling rate.
+
+    Returns:
+        Tuple: Limit values for estimator variances and their covariance.
+    """
+    Vx, Vv, Cov = Kx**2 * R, Kv**2 * R, Kx*Kv*R
+    
+    for _ in range(n):
+        nVx = (1-Kx)**2 * (Vx + t**2 * Vv + 2*t*Cov) + Kx**2 * R
+        
+        nVv = (1-t*Kv)**2 * Vv + \
+              Kv**2 * Vx \
+              - 2*(1-t*Kv)*Kv*Cov + \
+              Kv**2 * R
+        
+        Cov = Cov*(1-Kx)*(1-2*Kv*t) + \
+              t*(1-Kx)*(1-Kv*t)*Vv \
+              - (1-Kx)*Kv*Vx + \
+              Kx*Kv*R
+                
+        Vx = nVx
+        Vv = nVv
+    return Vx, Vv, Cov
+
+def cv_error_variances(Kx: float, Kv: float, R: float) -> Tuple[float, float]:
+    """Calculate the limit values of variances of position and velocity errors.
+    Those differ from estimator variances because we calculate prediction errors
+    after forward-prediction (after applying the state transition matrix).
+
+    Args:
+        Kx (float): Kalman gain value for the position estimator.
+        Kv (float): Kalman gain value for the velocity estimator.
+        R (float): Measurement noise variance.
+    
+    Returns:
+        Tuple: predicted, steady-state variances for position and velocity errors.
+    """
+    Vx, Vv, Cov = cv_estimator_variances(Kx, Kv, R)
+    
+    # position error is derived from:
+    #    x_hat_{i+1,i} = x_hat_{i,i} + v_hat_{i,i}*t
+    #    v_hat_{i+1,i} = v_hat_{i,i}
+    return Vx+Vv+2*Cov, Vv
+
