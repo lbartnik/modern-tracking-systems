@@ -1,4 +1,5 @@
 import numpy as np
+from typing import List
 
 
 class ConstantAccelerationModel:
@@ -26,3 +27,6 @@ class ConstantAccelerationModel:
 
     def Q(self, dt: float = None):
         return np.eye(self.state_dim) * self.sigma
+
+def constant_acceleration_models(*args) -> List[ConstantAccelerationModel]:
+    return [ConstantAccelerationModel(sigma) for sigma in args]

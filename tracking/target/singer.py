@@ -1,13 +1,14 @@
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
+from typing import Optional
 from ..util import to_df
 
 class SingerTarget:
     """Generates sample target trajectory using the Singer Acceleration Model.
     """
 
-    def __init__(self, tau: float, sigma: float, T: float = 1):
+    def __init__(self, tau: float, sigma: float, T: float = 1, seed: Optional[float] = None):
         """Initialize trajectory generator.
 
         Args:
@@ -18,13 +19,23 @@ class SingerTarget:
         self.tau = tau
         self.sigma = sigma
         self.T = T
+        self.seed = seed
     
     @property
     def name(self):
         """Target model name"""
-        return f"singer_{self.tau}_{self.sigma}"
+        if self.seed is None:
+            return f"singer_{self.tau}_{self.sigma}"
+        else:
+            return f"singer_{self.tau}_{self.sigma}_{self.seed}"
+    
+    def __repr__(self):
+        return self.name
 
-    def positions(self, T: float, n: int, seed: float = 0) -> np.ndarray:
+    def true_states(self, T: float, n: int, seed: float = 0) -> np.ndarray:
+        if self.seed is not None:
+            seed = self.seed
+        
         rnd = np.random.default_rng(seed=seed)
         time = np.arange(n) * T
 
@@ -38,8 +49,8 @@ class SingerTarget:
         
         return (np.array(ret).T)[:,:3]
 
-    def positions_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
-        return to_df(self.positions(T, n, seed), columns=['x','y','z'])
+    def true_states_df(self, T: float = 1, n: int = 400, seed: int = 0) -> pd.DataFrame:
+        return to_df(self.true_states(T, n, seed), columns=['x','y','z'])
 
 
 

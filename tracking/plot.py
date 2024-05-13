@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from collections import UserList
 from typing import List, Tuple
 
-from .evaluation import EvaluationResult, EvaluationResultList, GroupedEvaluationResultList, rmse, state_residuals
+from .simulation import EvaluationResult, EvaluationResultList, GroupedEvaluationResultList, rmse, state_residuals
 from .util import to_df, colorscale
 
 
