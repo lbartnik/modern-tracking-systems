@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.typing import ArrayLike
+from typing import List
 
 
 class SingerAccelerationModel:
@@ -24,7 +25,21 @@ class SingerAccelerationModel:
     def name(self):
         """Motion model name"""
         return f"singer_{self.tau}_{self.sigma}"
-        
+    
+    @property
+    def noise_intensity(self) -> float:
+        """Expose sigma as noise_intensity.
+
+        Sigma is the parameter name used in the formulation Singer motion model.
+        It is the equivalent of noise intensity found in other motion models. We
+        keep the internal name as sigma but, for consistency of interface, we also
+        expose is as noise_intensity.
+
+        Returns:
+            float: Motion intensity value.
+        """
+        return self.sigma
+
     def F(self, dt):
         beta = 1/self.tau
         BT   = beta * dt
@@ -35,15 +50,15 @@ class SingerAccelerationModel:
         f_3 = rho
 
         return np.array([[1, 0, 0, dt, 0, 0, f_1, 0, 0],
-                         [0, 1, 0, 0, dt, 0, 0, f_1, 0],
-                         [0, 0, 1, 0, 0, dt, 0, 0, f_1],
-                         [0, 0, 0, 1, 0, 0, f_2, 0, 0],
-                         [0, 0, 0, 0, 1, 0, 0, f_2, 0],
-                         [0, 0, 0, 0, 0, 1, 0, 0, f_2],
-                         [0, 0, 0, 0, 0, 0, f_3, 0, 0],
-                         [0, 0, 0, 0, 0, 0, 0, f_3, 0],
-                         [0, 0, 0, 0, 0, 0, 0, 0, f_3]])
-        
+                        [0, 1, 0, 0, dt, 0, 0, f_1, 0],
+                        [0, 0, 1, 0, 0, dt, 0, 0, f_1],
+                        [0, 0, 0, 1, 0, 0, f_2, 0, 0],
+                        [0, 0, 0, 0, 1, 0, 0, f_2, 0],
+                        [0, 0, 0, 0, 0, 1, 0, 0, f_2],
+                        [0, 0, 0, 0, 0, 0, f_3, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, f_3, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 0, f_3]])
+    
     def Q(self, dt):
         beta = 1/self.tau
         BT   = beta * dt
@@ -76,5 +91,13 @@ class SingerAccelerationModel:
                 * 2 * self.sigma**2 / self.tau
 
 
-def singer_acceleration_models(*args):
+def singer_acceleration_models(*args) -> List[SingerAccelerationModel]:
+    """Create Singer acceleration models.
+
+    Args:
+        args (List[Tuple[float, float]]): A list of (tau, sigma) tuples.
+
+    Returns:
+        List[SingerAccelerationModel]: List of Singer Acceleration Model objects.
+    """
     return [SingerAccelerationModel(tau, sigma) for tau, sigma in args]

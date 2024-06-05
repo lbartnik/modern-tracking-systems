@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike
 __all__ = ['KalmanFilter', 'kalman_pv', 'kalman_pva']
 
 
-class KalmanFilter:
+class KalmanFilter(object):
     def __init__(self, state_dim: int):
         self.spatial_dim = None           # number of spatial dimensions
         self.state_dim = state_dim        # dimensionality of the state

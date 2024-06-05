@@ -88,7 +88,7 @@ class EvaluationResultList(UserList):
     def group_by(self, include: List[str] = None, exclude: List[str] = None) -> List[List[EvaluationResult]]:
         """Group results by given set of evaluation task parameters.
 
-        Either `include` or `exclude` must be provided but not both.
+        Either `include` or `exclude` can be provided but not both.
 
         Args:
             include (List[str], optional): A list of parameter names to group by.
@@ -98,15 +98,17 @@ class EvaluationResultList(UserList):
             List[EvaluationResult]: List of groups of evaluation results.
         """
         if include is not None and exclude is not None:
-            raise Exception("Either `include` or `exclude` must be provided but not both.")
+            raise Exception("Either `include` or `exclude` can be provided but not both.")
 
         if include is not None:
             if isinstance(include, str):
                 include = [include]
-        else:
+        elif exclude is not None:
             if isinstance(exclude, str):
                 exclude = [exclude]
             include = [key for key in dict(self.data[0]).keys() if key not in exclude]
+        else:
+            include = []
         
         # now perform the actual grouping
         groups = {}
