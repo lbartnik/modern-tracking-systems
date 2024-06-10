@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 from ..util import to_df
 
 
 class ConstantVelocityTarget:
-    def __init__(self, speed: float = 30):
+    def __init__(self, speed: float = 30, initial_position: ArrayLike = [0, 0, 0]):
         """Initialize target generator.
 
         Args:
@@ -13,6 +14,7 @@ class ConstantVelocityTarget:
         self.speed = speed
         self.velocity = np.array([1, 0, 0]) # velocity direction, unit vector
         self.spatial_dim = 3
+        self.initial_position = np.array(initial_position)
 
     @property
     def name(self):
@@ -31,7 +33,7 @@ class ConstantVelocityTarget:
             np.ndarray: (n, 6) array of states.
         """
         states = []
-        current_pos = np.array([0.0, 0.0, 0.0])
+        current_pos = self.initial_position
         current_time = 0
         vel = self.velocity * self.speed
 
