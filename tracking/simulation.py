@@ -39,7 +39,7 @@ class EvaluationTask:
         return '{} {}'.format(self.__class__.__name__, dict(self))
     
 
-class EvaluationResult(EvaluationTask):
+class SimulationResult(EvaluationTask):
     def __init__(self, task: EvaluationTask, truth: np.ndarray, x_hat: np.ndarray, P_hat: np.ndarray, K: np.ndarray, z: np.ndarray):
         super().__init__(target_model=task.target_model, motion_model=task.motion_model, T=task.T,
                          n=task.n, z_sigma=task.z_sigma, R=task.R, seed=task.seed)
@@ -71,21 +71,21 @@ class EvaluationResult(EvaluationTask):
         return x
 
 
-class EvaluationResultList(UserList):
-    def select(self, **kwargs) -> List[EvaluationResult]:
+class SimulationResultList(UserList):
+    def select(self, **kwargs) -> List[SimulationResult]:
         """Select results which match the provided set of parameter values.
 
         Returns:
-            List[EvaluationResult]: Evaluation results matching the given query.
+            List[SimulationResult]: Evaluation results matching the given query.
         """
         ans = []
         for r in self.data:
             match = [str(getattr(r, name)) == str(value) for name, value in kwargs.items()]
             if all(match):
                 ans.append(r)
-        return EvaluationResultList(ans)
+        return SimulationResultList(ans)
     
-    def group_by(self, include: List[str] = None, exclude: List[str] = None) -> List[List[EvaluationResult]]:
+    def group_by(self, include: List[str] = None, exclude: List[str] = None) -> List[List[SimulationResult]]:
         """Group results by given set of evaluation task parameters.
 
         Either `include` or `exclude` can be provided but not both.
@@ -95,7 +95,7 @@ class EvaluationResultList(UserList):
             exclude (List[str], optional): A list of parameter names not to group by.
 
         Returns:
-            List[EvaluationResult]: List of groups of evaluation results.
+            List[SimulationResult]: List of groups of evaluation results.
         """
         if include is not None and exclude is not None:
             raise Exception("Either `include` or `exclude` can be provided but not both.")
@@ -116,12 +116,12 @@ class EvaluationResultList(UserList):
             group_id = '_'.join([str(getattr(result, key)) for key in include])
             groups.setdefault(group_id, []).append(result)
         
-        ans = GroupedEvaluationResultList([EvaluationResultList(group) for group in groups.values()])
+        ans = GroupedSimulationResultList([SimulationResultList(group) for group in groups.values()])
         ans.include = include
         return ans
 
 
-class GroupedEvaluationResultList(UserList):
+class GroupedSimulationResultList(UserList):
     include: List[str] = None
 
     def apply(self, fun):
@@ -140,7 +140,7 @@ class GroupedEvaluationResultList(UserList):
         return '{}: {} groups on {}'.format(self.__class__.__name__, len(self.data), self.include)
 
 
-def execute(task: EvaluationTask) -> EvaluationResult:
+def execute(task: EvaluationTask) -> SimulationResult:
     # calculate target positions over time
     true_states = task.target_model.true_states(T=task.T, n=task.n, seed=task.seed)
 
@@ -167,7 +167,7 @@ def execute(task: EvaluationTask) -> EvaluationResult:
         kf.update(z)
         K.append(kf.K)
     
-    return EvaluationResult(task, true_states, np.array(x_hat), np.array(P_hat), np.array(K), meas)
+    return SimulationResult(task, true_states, np.array(x_hat), np.array(P_hat), np.array(K), meas)
 
 
 def _cartesian_measurements(positions, noise_covariance, seed):
@@ -198,10 +198,10 @@ def monte_carlo(target, motion_model, z_sigma=.1, seeds=range(50), T: float = 1,
         task = EvaluationTask(target_model=tg, motion_model=mm, T=T, n=n, z_sigma=zs, R=zs*zs, seed=sd)
         results.append(execute(task))
     
-    return EvaluationResultList(results)
+    return SimulationResultList(results)
 
 
-def chi_squared(results: List[EvaluationResult]) -> pd.DataFrame:
+def chi_squared(results: List[SimulationResult]) -> pd.DataFrame:
     ans = []
     for r in results:
         diff = r.x_hat[:,:3] - r.truth[:,:3]
@@ -216,9 +216,9 @@ def chi_squared(results: List[EvaluationResult]) -> pd.DataFrame:
     return ans
 
 
-def state_residuals_np(results: Union[EvaluationResult,EvaluationResultList]) -> List[Tuple[Dict, np.ndarray]]:
+def state_residuals_np(results: Union[SimulationResult,SimulationResultList]) -> List[Tuple[Dict, np.ndarray]]:
     # each entry in the list is a list of results 
-    if type(results) == EvaluationResult:
+    if type(results) == SimulationResult:
         groups = [[results]]
     else:
         # aggregate across seeds
@@ -235,7 +235,7 @@ def state_residuals_np(results: Union[EvaluationResult,EvaluationResultList]) ->
     return ans
 
 
-def state_residuals(results: Union[EvaluationResult,EvaluationResultList]) -> pd.DataFrame:
+def state_residuals(results: Union[SimulationResult,SimulationResultList]) -> pd.DataFrame:
     col_names = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'ax', 'ay', 'az']
 
     ans = []
@@ -263,7 +263,7 @@ def state_residuals(results: Union[EvaluationResult,EvaluationResultList]) -> pd
 
 
 
-def rmse(results: List[EvaluationResult]) -> pd.DataFrame:
+def rmse(results: List[SimulationResult]) -> pd.DataFrame:
     rows = []
     for params, data in state_residuals_np(results):
         row = deepcopy(params)

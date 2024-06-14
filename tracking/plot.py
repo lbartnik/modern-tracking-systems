@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from collections import UserList
 from typing import List, Tuple
 
-from .simulation import EvaluationResult, EvaluationResultList, GroupedEvaluationResultList, rmse, state_residuals
+from .simulation import SimulationResult, SimulationResultList, GroupedSimulationResultList, rmse, state_residuals
 from .util import to_df, colorscale
 
 
@@ -22,24 +22,24 @@ class Figures(UserList):
         return self
 
 
-def boxplot_rmse(results: List[EvaluationResult]) -> go.Figure:
+def boxplot_rmse(results: List[SimulationResult]) -> go.Figure:
     data = rmse(results)
     fig=ex.box(data, y='rmse', x='z_sigma', color='motion', log_y=True)
     fig.update_xaxes(type='category')
     return fig
 
 
-def task_names(results: List[EvaluationResult]) -> List[str]:
+def task_names(results: List[SimulationResult]) -> List[str]:
     pass
 
 
-def plot_position_errors(result: EvaluationResult) -> Figures:
+def plot_position_errors(result: SimulationResult) -> Figures:
     data = state_residuals(result)
     return Figures([ex.scatter(data, x='time', y='diff', facet_row='dim'),
                     ex.histogram(data, x="diff", facet_row='dim')])
 
 
-def aggregated_errors(results: EvaluationResultList):
+def aggregated_errors(results: SimulationResultList):
     # aggregate across seeds
     parameters = set(dict(results[0]).keys())
     parameters.discard('seed')
@@ -65,7 +65,7 @@ def aggregated_errors(results: EvaluationResultList):
     return pd.concat(partial_results, ignore_index=True)
 
 
-def plot_aggregated_errors(results: EvaluationResultList):
+def plot_aggregated_errors(results: SimulationResultList):
     errors = aggregated_errors(results)
     
     in_time = ex.line(errors, x='time', y='error', color='motion', facet_col='z_sigma', facet_row='target')
@@ -84,8 +84,8 @@ def plot_aggregated_errors(results: EvaluationResultList):
 
 
 
-def plot_error_band(grouped: GroupedEvaluationResultList, abs: bool = False) -> go.Figure:
-    assert type(grouped) == GroupedEvaluationResultList
+def plot_error_band(grouped: GroupedSimulationResultList, abs: bool = False) -> go.Figure:
+    assert type(grouped) == GroupedSimulationResultList
 
     subplot_titles = []
     for group in grouped:

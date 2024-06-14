@@ -6,6 +6,7 @@ class ConstantVelocityModel:
     def __init__(self, noise_intensity: float = 1):
         self.spatial_dim = 3    # number of spatial dimensions
         self.state_dim = 6      # size of the state
+        self.space_name = "CartesianPositionVelocity"
         self.noise_intensity = noise_intensity
 
     @property
