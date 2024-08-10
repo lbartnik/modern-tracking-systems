@@ -1,4 +1,4 @@
-from tracking.kalman.extended import RbeSpace
+from tracking.kalman.generic import RbeSpace
 from numpy.testing import assert_allclose
 import numpy as np
 
