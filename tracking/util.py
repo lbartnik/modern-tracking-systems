@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Iterable, Union
 from IPython.display import Image
 
 
-def to_df(array: ArrayLike, col_prefix='x', columns=None):
+def to_df(array: ArrayLike, col_prefix='x', columns=None, additional_columns: Dict = None):
     array = np.array(array)
 
     if len(array.shape) == 1:
@@ -24,6 +24,10 @@ def to_df(array: ArrayLike, col_prefix='x', columns=None):
     for column, name in zip(np.array(array).T, columns):
         d[name] = column
     
+    if additional_columns is not None:
+        for name, value in additional_columns.items():
+            d[name] = value
+
     return pd.DataFrame(d)
 
 def colorscale(x: Iterable[Any] = None, n: int = None, alpha: float = None) -> Union[List[str], Dict[Any, str]]:
