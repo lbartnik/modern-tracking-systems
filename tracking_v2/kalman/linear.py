@@ -1,11 +1,15 @@
 import numpy as np
 from numpy.typing import ArrayLike
 
+from .interface import KalmanFilter
 from ..motion import MotionModel
 from ..np import as_column
 
 
-class KalmanFilter:
+__all__ = ['LinearKalmanFilter']
+
+
+class LinearKalmanFilter(KalmanFilter):
     def __init__(self, motion_model: MotionModel, H: ArrayLike):
         """Initialize a linear Kalman Filter. State dimensionality is derived from the motion
         model's `state_dim`. State mean is initialized as a vector of zeros while covariance
@@ -49,6 +53,7 @@ class KalmanFilter:
         self.x_hat[:len(x), 0] = x
         self.P_hat[:r, :c] = P
         self.innovation = None
+        self.S = None
     
     # extrapolate state and uncertainty
     def predict(self, dt: float):
@@ -102,3 +107,4 @@ class KalmanFilter:
         self.x_hat = x
         self.P_hat = P
         self.innovation = innovation
+        self.S = S

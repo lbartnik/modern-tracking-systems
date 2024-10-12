@@ -1,7 +1,7 @@
 import numpy as np
 
 from tracking_v2.evaluation import nees, validate_kalman_filter
-from tracking_v2.kalman import KalmanFilter
+from tracking_v2.kalman import LinearKalmanFilter
 from tracking_v2.module import SingleTargetTracker
 from tracking_v2.motion import ConstantVelocityModel
 from tracking_v2.sensor import GeometricSensor
@@ -34,10 +34,10 @@ def test_validate_kalman_filter():
 
     trackers = []
     for i in range(100):
-        tracker = SingleTargetTracker(KalmanFilter(ConstantVelocityModel(noise_intensity=0),
-                                                   [[1, 0, 0, 0, 0, 0],
-                                                    [0, 1, 0, 0, 0, 0],
-                                                    [0, 0, 1, 0, 0, 0]]))
+        tracker = SingleTargetTracker(LinearKalmanFilter(ConstantVelocityModel(noise_intensity=0),
+                                                         [[1, 0, 0, 0, 0, 0],
+                                                          [0, 1, 0, 0, 0, 0],
+                                                          [0, 0, 1, 0, 0, 0]]))
         sensor = GeometricSensor(seed=i)
 
         for t, position in enumerate(target.true_states()[:, :3]):

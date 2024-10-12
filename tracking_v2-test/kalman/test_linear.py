@@ -1,16 +1,16 @@
 import numpy as np
 from numpy.testing import assert_equal, assert_allclose
 
-from tracking_v2.kalman.linear import KalmanFilter
+from tracking_v2.kalman.linear import LinearKalmanFilter
 from tracking_v2.motion import ConstantVelocityModel
 from tracking_v2.sensor import GeometricSensor
 from tracking_v2.target import ConstantVelocityTarget
 
 
 def test_initialize():
-    kf = KalmanFilter(ConstantVelocityModel(), [[1, 0, 0, 0, 0, 0],
-                                                [0, 1, 0, 0, 0, 0],
-                                                [0, 0, 1, 0, 0, 0]])
+    kf = LinearKalmanFilter(ConstantVelocityModel(), [[1, 0, 0, 0, 0, 0],
+                                                      [0, 1, 0, 0, 0, 0],
+                                                      [0, 0, 1, 0, 0, 0]])
     kf.initialize([1, 2, 3], np.diag([4, 5, 6]))
 
     assert_equal(kf.x_hat.T, [[1, 2, 3, 0, 0, 0]])
@@ -19,9 +19,9 @@ def test_initialize():
 
 
 def test_update():
-    kf = KalmanFilter(ConstantVelocityModel(0), [[1, 0, 0, 0, 0, 0],
-                                                 [0, 1, 0, 0, 0, 0],
-                                                 [0, 0, 1, 0, 0, 0]])
+    kf = LinearKalmanFilter(ConstantVelocityModel(0), [[1, 0, 0, 0, 0, 0],
+                                                       [0, 1, 0, 0, 0, 0],
+                                                       [0, 0, 1, 0, 0, 0]])
     kf.initialize([1, 1, 1], np.diag([1, 1, 1]))
     kf.predict(1)
     kf.update([2, 3, 4], np.diag([1, 1, 1]))
@@ -55,9 +55,9 @@ def test_nees():
         # use distinct random seeds to provide different noise values in each run
         sensor = GeometricSensor(seed=i)
         
-        kf = KalmanFilter(motion_model, [[1, 0, 0, 0, 0, 0],
-                                         [0, 1, 0, 0, 0, 0],
-                                         [0, 0, 1, 0, 0, 0]])
+        kf = LinearKalmanFilter(motion_model, [[1, 0, 0, 0, 0, 0],
+                                               [0, 1, 0, 0, 0, 0],
+                                               [0, 0, 1, 0, 0, 0]])
 
         true_positions = target.true_states()
         kf.initialize(true_positions[0, :], np.eye(3))
