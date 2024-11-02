@@ -1,5 +1,5 @@
 import numpy as np
-from tracking_v2.target.sinus import SinusTarget
+from tracking_v2.target.turns import SinusTarget
 
 
 def test_sinus():

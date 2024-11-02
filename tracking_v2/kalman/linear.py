@@ -29,7 +29,7 @@ class LinearKalmanFilter(KalmanFilter):
         self.P_hat = np.eye(self.motion_model.state_dim)
 
         self.innovation = None
-    
+        self.S = None
 
     def initialize(self, x: ArrayLike, P: ArrayLike):
         """Initialize the Kalman Filter state. If `x` has N elements, the shape of `P` must
@@ -52,8 +52,6 @@ class LinearKalmanFilter(KalmanFilter):
 
         self.x_hat[:len(x), 0] = x
         self.P_hat[:r, :c] = P
-        self.innovation = None
-        self.S = None
     
     # extrapolate state and uncertainty
     def predict(self, dt: float):

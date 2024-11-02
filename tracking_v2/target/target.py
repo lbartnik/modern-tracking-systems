@@ -28,4 +28,4 @@ class Target(object):
         raise Exception(f"Target {self.__class__.__name__} does not implement true_states()")
 
     def position_at_time(self, t: float) -> np.ndarray:
-        raise Exception(f"Target {self.__class__.__name__} does not implement position_at_time()")
+        return self.true_states([t], 1)[0, :]
