@@ -7,6 +7,13 @@ from .target import Target
 __all__ = ['SingleTurnTarget', 'SinusTarget']
 
 
+def _time_array(T: Union[float, ArrayLike], n: int) -> np.ndarray:
+    if isinstance(T, (int, float)):
+        return np.arange(0, n, T)
+    else:
+        return np.array(T)
+
+
 class SingleTurnTarget(Target):
     def __init__(self, speed: float = 30, heading_change_rate: float = 2):
         """Initialize target generator.
@@ -51,18 +58,32 @@ def _single_turn_trace(t: ArrayLike, initial_position: ArrayLike, speed: float, 
     Returns:
         ArrayLike: States, shape (N, 7): positions (3), velocity (3), heading (1).
     """
-    slope_factor = 20  # how smoothly does each slope start and end
-
     t = np.array(t)
-    t_full = np.arange(np.min(t), np.max(t)+1, .1)
-    
-    # heading changes from 0 to +90 degrees
-    heading_rad = _sigma(heading_change_rate_deg/slope_factor * (t_full - np.max(t)/2)) * np.pi/2
 
-    current_pos = initial_position
+    # heading changes from 0 to +90 degrees
+    turn_time = 90 / heading_change_rate_deg
+    if turn_time >= np.max(t):
+        raise "Not enough time to run"
+    
+    pad_time  = (np.max(t) - turn_time) / 2
+    t_full = np.linspace(np.min(t), np.max(t), (np.max(t) - np.min(t)) * 10)
+
+    samples_per_second = 10
+
+    heading_deg = np.concatenate((
+        np.full(int(pad_time * samples_per_second), 0),
+        np.linspace(0, 90, int(turn_time * samples_per_second)),
+        np.full(int(pad_time * samples_per_second), 90)
+    ))
+    heading_rad = heading_deg * np.pi / 180
+
+    assert len(heading_rad) == len(t_full)
+
+    current_pos = np.array(initial_position)
     states = []
 
-    for current_heading, dt in zip(heading_rad, np.concatenate((np.diff(t_full), [0]))):
+    dt = 1 / samples_per_second
+    for current_heading in heading_rad:
         current_vel = speed * np.array([np.sin(current_heading), np.cos(current_heading), 0])
         states.append(np.hstack((current_pos, current_vel, [current_heading])))
         current_pos = current_pos + current_vel * dt
@@ -109,12 +130,6 @@ class SinusTarget(Target):
     def heading(self, T: Union[float, ArrayLike] = 1, n: int = 400, seed: int = None) -> np.ndarray:
         return _sigmoid_trace(_time_array(T, n), [0.0, 0.0, 0.0], self.speed, self.heading_change_rate)[:, 6]
 
-
-def _time_array(T: Union[float, ArrayLike], n: int) -> np.ndarray:
-    if isinstance(T, (int, float)):
-        return np.arange(0, n, T)
-    else:
-        return np.array(T)
 
 
 def _sigmoid_trace(t: ArrayLike, initial_position: ArrayLike, speed: float, heading_change_rate: float) -> ArrayLike:

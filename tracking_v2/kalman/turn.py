@@ -24,10 +24,10 @@ class CoordinatedTurn(KalmanFilter):
         assert len(Q_sigmas) == 2
 
         self.x_hat = np.zeros((5, 1))
-        self.P_hat = np.eye(5)
+        self.P_hat = np.diag([1, 1, 1, 1, Q_sigmas[1]])
         self.H = np.atleast_2d(H)
-        self.epsilon = 1e-6
-        self.Q_sigmas = Q_sigmas
+        self.epsilon = 1e-6        
+        self.Q_base = np.diag([Q_sigmas[0], Q_sigmas[0], Q_sigmas[1]]) ** 2
 
         self.K = None
 
@@ -115,28 +115,30 @@ class CoordinatedTurn(KalmanFilter):
         #
         # except: state is defined as [x, y, x_dot, y_dot, omega] rather than
         # [x, x_dot, y, y_dot, omega]
-        var_spatial = self.Q_sigmas[0] ** 2
-        var_turn    =  self.Q_sigmas[1] ** 2
+        T = dt
+        T2 = dt*dt
+        Gamma_CT = np.array([[T2/2, 0,    0],
+                            [T,    0,    0],
+                            [0,    T2/2, 0],
+                            [0,    T,    0],
+                            [0,    0,    T]])
 
-        dt2 = dt*dt / 2
-        return np.array([
-            [dt2*var_spatial, 0,   0,   0,  0],
-            [0,   dt*var_spatial,  0,   0,  0],
-            [0,   0,   dt2*var_spatial, 0,  0],
-            [0,   0,   0,   dt*var_spatial, 0],
-            [0,   0,   0,   0,    dt*var_turn]
-        ])
+        return Gamma_CT @ self.Q_base @ Gamma_CT.T
+
 
     def initialize(self, x: ArrayLike, P: ArrayLike):
         x, P = np.array(x).squeeze(), np.array(P)
-        r, c = P.shape
 
-        assert len(x) <= len(self.x_hat)
-        assert r <= self.P_hat.shape[0]
-        assert c <= self.P_hat.shape[1]
+        assert len(x) == 2
+        assert P.shape == (2, 2)
 
-        self.x_hat[:len(x), 0] = x
-        self.P_hat[:r, :c] = P
+        self.x_hat[0, 0] = x[0]
+        self.x_hat[2, 0] = x[1]
+
+        self.P_hat[0, 0] = P[0, 0]
+        self.P_hat[2, 0] = P[1, 0]
+        self.P_hat[0, 2] = P[0, 1]
+        self.P_hat[2, 2] = P[1, 1]
     
     def predict(self, dt: float):
         assert dt > 0
