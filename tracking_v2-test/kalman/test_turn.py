@@ -1,12 +1,12 @@
 import numpy as np
 import scipy as sp
 
-from tracking_v2.kalman.turn import CoordinatedTurn
+from tracking_v2.kalman.turn import CoordinatedTurn, CoordinatedTurn3D
 from tracking_v2.sensor import GeometricSensor
 from tracking_v2.target import SingleTurnTarget
 
 
-def test_f():
+def test_ct_f():
     ct = CoordinatedTurn([[1, 0, 0, 0, 0],
                           [0, 0, 1, 0, 0]],
                          [1, .02])
@@ -26,7 +26,7 @@ def test_f():
                                                        [0,   0,  0,   0,  1]]), 2)
 
 
-def test_f_x():
+def test_ct_f_x():
     ct = CoordinatedTurn([[1, 0, 0, 0, 0],
                           [0, 0, 1, 0, 0]],
                          [1, .02])
@@ -47,7 +47,7 @@ def test_f_x():
                                                          [0,   0,  0,   0,   1]]), 2)
 
 
-def test_q():
+def test_ct_q():
     ct = CoordinatedTurn([[1, 0, 0, 0, 0],
                           [0, 0, 1, 0, 0]],
                          [2, .02])
@@ -60,7 +60,7 @@ def test_q():
                                                         [0,       0,    0,      0,    0.0009]]), 4)
 
 
-def test_ct():
+def test_ct_ct():
     target = SingleTurnTarget(30, 1)
     sensor = GeometricSensor(seed=0)
     true_positions = target.true_states()
@@ -125,3 +125,31 @@ def test_ct():
     too_low = np.mean(mc_nees_scores < conf_int[0])
     np.testing.assert_almost_equal(too_low, .1929, 4)
 
+
+
+# --- Coordinated Turn 3D ---
+
+def test_ct3d_x_hat():
+    ct = CoordinatedTurn3D([1, .02])
+    ct.ct.x_hat = np.array([[1, 4, 2, 5, 100]]).T
+    ct.z.x_hat = np.array([[3, 6]]).T
+    
+    np.testing.assert_allclose(ct.x_hat.T, [[1, 2, 3, 4, 5, 6]])
+
+
+def test_ct3d_P_hat():
+    ct = CoordinatedTurn3D([1, .02])
+    ct.ct.P_hat = np.array([[1, 4, 2, 5, 100],
+                            [19, 22, 20, 23, 102],
+                            [7, 10, 8, 11, 103],
+                            [25, 28, 26, 29, 104],
+                            [104, 105, 106, 107, 108]])
+    ct.z.P_hat = np.array([[15, 18],
+                           [27, 36]])
+    
+    np.testing.assert_allclose(ct.P_hat, [[ 1,  2,  0,  4,  5,  0],
+                                          [ 7,  8,  0, 10, 11,  0],
+                                          [ 0,  0, 15,  0,  0, 18],
+                                          [19, 20,  0, 22, 23,  0],
+                                          [25, 26,  0, 28, 29,  0],
+                                          [ 0,  0, 27,  0,  0, 36]])

@@ -2,6 +2,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from .interface import KalmanFilter
+from .linear import LinearKalmanFilter
 from ..np import as_column
 
 
@@ -179,3 +180,91 @@ class CoordinatedTurn(KalmanFilter):
         self.innovation = innovation
         self.S = S
         self.K = K
+
+
+
+class ConstantVelocityModel1D:
+    def __init__(self, noise_intensity: float = 1):
+        self.state_dim = 2
+        self.noise_intensity = noise_intensity
+
+    @property
+    def name(self):
+        """Returns the name of the motion model"""
+        return f"cv1d_{self.noise_intensity}"
+    
+    def F(self, dt: float):
+        return np.array([[1, dt],
+                         [0, 1]])
+
+    def Q(self, dt: float):
+        dt3 = dt**3 / 3
+        dt2 = dt**2 / 2
+        return np.array([[dt3, dt2],
+                         [dt2, dt]]) * self.noise_intensity**2
+
+
+
+class CoordinatedTurn3D(KalmanFilter):
+    def __init__(self, Q: ArrayLike):
+        self.ct = CoordinatedTurn([[1, 0, 0, 0, 0],
+                                   [0, 0, 1, 0, 0]], Q)
+        self.z  = LinearKalmanFilter(ConstantVelocityModel1D(), [[1, 0],
+                                                                 [0, 0]])
+
+    def initialize(self, x: ArrayLike, P: ArrayLike):
+        x, P = np.array(x).squeeze(), np.array(P)
+        self.ct.initialize(x[:2], P[:2, :2])
+        self.z.initialize(x[2], [[P[2, 2]]])
+    
+    def predict(self, dt: float):
+        self.ct.predict(dt)
+        self.z.predict(dt)
+    
+    def update(self, z: ArrayLike, R: ArrayLike):
+        x, P = np.array(x).squeeze(), np.array(P)
+        self.ct.update(x[:2], R[:2, :2])
+        self.z.update(x[2], [[R[2, 2]]])
+
+    @property
+    def x_hat(self) -> np.ndarray:
+        x = np.zeros(6)
+        x[0] = self.ct.x_hat[0, 0]
+        x[1] = self.ct.x_hat[2, 0]
+        x[2] = self.z.x_hat[0, 0]
+        x[3] = self.ct.x_hat[1, 0]
+        x[4] = self.ct.x_hat[3, 0]
+        x[5] = self.z.x_hat[1, 0]
+        return x.reshape((6, 1))
+    
+    @property
+    def P_hat(self) -> np.ndarray:
+        P = np.zeros((6, 6))
+
+        P[0, 0] = self.ct.P_hat[0, 0]
+        P[0, 1] = self.ct.P_hat[0, 2]
+        P[0, 3] = self.ct.P_hat[0, 1]
+        P[0, 4] = self.ct.P_hat[0, 3]
+
+        P[1, 0] = self.ct.P_hat[2, 0]
+        P[1, 1] = self.ct.P_hat[2, 2]
+        P[1, 3] = self.ct.P_hat[2, 1]
+        P[1, 4] = self.ct.P_hat[2, 3]
+
+        P[2, 2] = self.z.P_hat[0, 0]
+        P[2, 5] = self.z.P_hat[0, 1]
+
+        P[3, 0] = self.ct.P_hat[1, 0]
+        P[3, 1] = self.ct.P_hat[1, 2]
+        P[3, 3] = self.ct.P_hat[1, 1]
+        P[3, 4] = self.ct.P_hat[1, 3]
+
+        P[4, 0] = self.ct.P_hat[3, 0]
+        P[4, 1] = self.ct.P_hat[3, 2]
+        P[4, 3] = self.ct.P_hat[3, 1]
+        P[4, 4] = self.ct.P_hat[3, 3]
+
+        P[5, 2] = self.z.P_hat[1, 0]
+        P[5, 5] = self.z.P_hat[1, 1]
+
+        return P

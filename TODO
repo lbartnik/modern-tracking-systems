@@ -1,0 +1,2 @@
+1. initial velocity variance as a parameter to initialize()
+2. initialize tracks from batches of measurements to estimate the initial velocity
