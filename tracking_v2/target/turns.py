@@ -15,17 +15,19 @@ def _time_array(T: Union[float, ArrayLike], n: int) -> np.ndarray:
 
 
 class SingleTurnTarget(Target):
-    def __init__(self, speed: float = 30, heading_change_rate: float = 2):
+    def __init__(self, speed: float = 30, heading_change_rate: float = 2, initial_position: ArrayLike = [0, 0, 0]):
         """Initialize target generator.
 
         Args:
             speed (float, optional): Linear velocity, in m/s. Defaults to 30.
             heading_change_rate (float, optional): The rate at which heading changes. Defaults to 2.
+            initial_position (ArrayLike): initial position of the target
         """
         self.name = "single_turn"
 
         self.speed = speed
         self.heading_change_rate = heading_change_rate
+        self.initial_position = np.asarray(initial_position)
 
 
     def true_states(self, T: Union[float, ArrayLike] = 1, n: int = 400, seed: int = None) -> np.ndarray:
@@ -39,10 +41,10 @@ class SingleTurnTarget(Target):
         Returns:
             np.ndarray: (n, 6) array of positions and velocities.
         """        
-        return _single_turn_trace(_time_array(T, n), [0.0, 0.0, 0.0], self.speed, self.heading_change_rate)[:, :6]
+        return _single_turn_trace(_time_array(T, n), self.initial_position, self.speed, self.heading_change_rate)[:, :6]
 
     def heading(self, T: Union[float, ArrayLike] = 1, n: int = 400, seed: int = None) -> np.ndarray:
-        return _single_turn_trace(_time_array(T, n), [0.0, 0.0, 0.0], self.speed, self.heading_change_rate)[:, 6]
+        return _single_turn_trace(_time_array(T, n), self.initial_position, self.speed, self.heading_change_rate)[:, 6]
 
 
 def _single_turn_trace(t: ArrayLike, initial_position: ArrayLike, speed: float, heading_change_rate_deg: float) -> ArrayLike:
