@@ -7,6 +7,8 @@ class KalmanFilter(object):
     P_hat: np.ndarray
     innovation: np.ndarray
     S: np.ndarray
+    state_dim: int
+    space_dim: int
 
     def initialize(self, x: ArrayLike, P: ArrayLike):
         raise Exception(f"initialize() method not implemented in {self.__class__.__name__}")

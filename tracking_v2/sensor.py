@@ -27,9 +27,10 @@ class GeometricSensor:
         self.spatial_dim = 3
         self.R = np.array(R)
         assert self.R.shape == (self.spatial_dim, self.spatial_dim)
-
+        self.reset_seed(seed)
+    
+    def reset_seed(self, seed: int = None):
         self.rng = np.random.default_rng(seed=seed)
-
 
     def generate_measurement(self, t: float, position: np.ndarray) -> SensorMeasurement:
         position = np.array(position).squeeze()

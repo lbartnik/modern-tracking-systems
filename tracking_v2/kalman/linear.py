@@ -31,6 +31,10 @@ class LinearKalmanFilter(KalmanFilter):
         self.innovation = None
         self.S = None
 
+        self.space_dim = 3
+        self.state_dim = self.motion_model.state_dim
+    
+
     def initialize(self, x: ArrayLike, P: ArrayLike):
         """Initialize the Kalman Filter state. If `x` has N elements, the shape of `P` must
         be (N, N). N must be equal or less to the number of state dimensions. If `N` is less

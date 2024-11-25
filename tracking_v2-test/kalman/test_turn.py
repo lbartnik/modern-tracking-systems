@@ -1,15 +1,15 @@
 import numpy as np
 import scipy as sp
 
-from tracking_v2.kalman.turn import CoordinatedTurn, CoordinatedTurn3D
+from tracking_v2.kalman.turn import CoordinatedTurn2D, CoordinatedTurn
 from tracking_v2.sensor import GeometricSensor
 from tracking_v2.target import SingleTurnTarget
 
 
 def test_ct_f():
-    ct = CoordinatedTurn([[1, 0, 0, 0, 0],
-                          [0, 0, 1, 0, 0]],
-                         [1, .02])
+    ct = CoordinatedTurn2D([[1, 0, 0, 0, 0],
+                            [0, 0, 1, 0, 0]],
+                           [1, .02])
 
     ct.x_hat = np.array([[1, 2, 3, 4, 0]]).T
     np.testing.assert_almost_equal(ct.f(.5), np.array([[1, .5, 0,  0, 0],
@@ -27,9 +27,9 @@ def test_ct_f():
 
 
 def test_ct_f_x():
-    ct = CoordinatedTurn([[1, 0, 0, 0, 0],
-                          [0, 0, 1, 0, 0]],
-                         [1, .02])
+    ct = CoordinatedTurn2D([[1, 0, 0, 0, 0],
+                            [0, 0, 1, 0, 0]],
+                           [1, .02])
     
     ct.x_hat = np.array([[1, 2, 3, 4, 0]]).T
     np.testing.assert_almost_equal(ct.f_x(.5), np.array([[1, .5, 0,  0, -.5],
@@ -48,9 +48,9 @@ def test_ct_f_x():
 
 
 def test_ct_q():
-    ct = CoordinatedTurn([[1, 0, 0, 0, 0],
-                          [0, 0, 1, 0, 0]],
-                         [2, .02])
+    ct = CoordinatedTurn2D([[1, 0, 0, 0, 0],
+                            [0, 0, 1, 0, 0]],
+                           [2, .02])
 
     print(ct.Q(1.5))
     np.testing.assert_almost_equal(ct.Q(1.5), np.array([[5.0625,  6.75, 0,      0,    0],
@@ -60,7 +60,7 @@ def test_ct_q():
                                                         [0,       0,    0,      0,    0.0009]]), 4)
 
 
-def test_ct_ct():
+def test_ct_conf_int():
     target = SingleTurnTarget(30, 1)
     sensor = GeometricSensor(seed=0)
     true_positions = target.true_states()
@@ -69,9 +69,9 @@ def test_ct_ct():
     mc_nees_scores = []
 
     for _ in range(mc_runs):
-        ct = CoordinatedTurn([[1, 0, 0, 0, 0],
-                              [0, 0, 1, 0, 0]],
-                             [1, .02289])
+        ct = CoordinatedTurn2D([[1, 0, 0, 0, 0],
+                                [0, 0, 1, 0, 0]],
+                               [1, .02289])
         t = 0
         ct.initialize(true_positions[t, :2], np.eye(2))
 
@@ -130,7 +130,7 @@ def test_ct_ct():
 # --- Coordinated Turn 3D ---
 
 def test_ct3d_x_hat():
-    ct = CoordinatedTurn3D([1, .02])
+    ct = CoordinatedTurn([1, .02])
     ct.ct.x_hat = np.array([[1, 4, 2, 5, 100]]).T
     ct.z.x_hat = np.array([[3, 6]]).T
     
@@ -138,7 +138,7 @@ def test_ct3d_x_hat():
 
 
 def test_ct3d_P_hat():
-    ct = CoordinatedTurn3D([1, .02])
+    ct = CoordinatedTurn([1, .02])
     ct.ct.P_hat = np.array([[1, 4, 2, 5, 100],
                             [19, 22, 20, 23, 102],
                             [7, 10, 8, 11, 103],
