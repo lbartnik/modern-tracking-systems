@@ -2,6 +2,9 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 
+__all__ = ['KalmanFilter']
+
+
 class KalmanFilter(object):
     x_hat: np.ndarray
     P_hat: np.ndarray

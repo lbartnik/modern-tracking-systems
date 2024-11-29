@@ -6,7 +6,7 @@ from .linear import LinearKalmanFilter
 from ..np import as_column
 
 
-__all__ = ['CoordinatedTurn']
+__all__ = ['CoordinatedTurn2D', 'CoordinatedTurn']
 
 
 # nearly coordinated turn; "Estimation with Applications to Tracking
@@ -110,10 +110,10 @@ class CoordinatedTurn2D(KalmanFilter):
         T = dt
         T2 = dt*dt
         Gamma_CT = np.array([[T2/2, 0,    0],
-                            [T,    0,    0],
-                            [0,    T2/2, 0],
-                            [0,    T,    0],
-                            [0,    0,    T]])
+                             [T,    0,    0],
+                             [0,    T2/2, 0],
+                             [0,    T,    0],
+                             [0,    0,    T]])
 
         return Gamma_CT @ self.Q_base @ Gamma_CT.T
 
@@ -174,28 +174,6 @@ class CoordinatedTurn2D(KalmanFilter):
 
 
 
-class ConstantVelocityModel1D:
-    def __init__(self, noise_intensity: float = 1):
-        self.state_dim = 2
-        self.noise_intensity = noise_intensity
-
-    @property
-    def name(self):
-        """Returns the name of the motion model"""
-        return f"cv1d_{self.noise_intensity}"
-    
-    def F(self, dt: float):
-        return np.array([[1, dt],
-                         [0, 1]])
-
-    def Q(self, dt: float):
-        dt3 = dt**3 / 3
-        dt2 = dt**2 / 2
-        return np.array([[dt3, dt2],
-                         [dt2, dt]]) * self.noise_intensity**2
-
-
-
 class CoordinatedTurn(KalmanFilter):
     def __init__(self, Q_sigmas: ArrayLike):
         """Initialize a Coordinated-Turn Kalman Filter.
@@ -212,7 +190,7 @@ class CoordinatedTurn(KalmanFilter):
         Q_sigmas = np.asarray(Q_sigmas).squeeze()
         assert Q_sigmas.shape == (4,)
 
-        self.Q_base = np.diag(Q_sigmas)
+        self.Q_base = np.diag(Q_sigmas) ** 2
 
         self.x_hat = np.zeros((7, 1))
         self.P_hat = np.diag([Q_sigmas[0], Q_sigmas[0],
@@ -220,11 +198,10 @@ class CoordinatedTurn(KalmanFilter):
                               Q_sigmas[2], Q_sigmas[2],
                               Q_sigmas[3]])
         
-        self.H = np.array([[1, 0, 0, 0, 0, 0, 0],]
+        self.H = np.array([[1, 0, 0, 0, 0, 0, 0],
                            [0, 1, 0, 0, 0, 0, 0],
-                           [0, 0, 1, 0, 0, 0, 0])
+                           [0, 0, 1, 0, 0, 0, 0]])
         self.epsilon = 1e-6
-
         self.K = None
 
     def f(self, dt: float) -> np.ndarray:
@@ -232,26 +209,30 @@ class CoordinatedTurn(KalmanFilter):
         #
         # except: state is defined as [x, y, x_dot, y_dot, omega] rather than
         # [x, x_dot, y, y_dot, omega]
-        Omega = self.x_hat[4, 0]
+        Omega = self.x_hat[6, 0]
 
         if np.abs(Omega) < self.epsilon:
             return np.array([
-                [1, dt, 0, 0,  0],
-                [0, 1,  0, 0,  0],
-                [0, 0,  1, dt, 0],
-                [0, 0,  0, 1,  0],
-                [0, 0,  0, 0,  1]
+                [1, 0, 0, dt, 0,  0,  0],
+                [0, 1, 0, 0,  dt, 0,  0],
+                [0, 0, 1, 0,  0,  dt, 0],
+                [0, 0, 0, 1,  0,  0,  0],
+                [0, 0, 0, 0,  1,  0,  0],
+                [0, 0, 0, 0,  0,  1,  0],
+                [0, 0, 0, 0,  0,  0,  1]
             ])
         else:
             ST = np.sin(Omega * dt)
             CT = np.cos(Omega * dt)
 
             return np.array([
-                [1, ST/Omega,     0, -(1-CT)/Omega, 0],
-                [0, CT,           0, -ST,           0],
-                [0, (1-CT)/Omega, 1, ST/Omega,      0],
-                [0, ST,           0, CT,            0],
-                [0, 0,            0, 0,             1]
+                [1, 0, 0, ST/Omega,     -(1-CT)/Omega, 0,  0],
+                [0, 1, 0, (1-CT)/Omega,  ST/Omega,     0,  0],
+                [0, 0, 1, 0,             0,            dt, 0],
+                [0, 0, 0, CT,           -ST,           0,  0],
+                [0, 0, 0, ST,            CT,           0,  0],
+                [0, 0, 0, 0,             0,            1,  0],
+                [0, 0, 0, 0,             0,            0,  1]
             ])
     
 
@@ -260,18 +241,21 @@ class CoordinatedTurn(KalmanFilter):
         #
         # except: state is defined as [x, y, x_dot, y_dot, omega] rather than
         # [x, x_dot, y, y_dot, omega]
-        _, x_dot, _, y_dot, Omega = self.x_hat[:, 0]
+        _, _, _, x_dot, y_dot, _, Omega = self.x_hat[:, 0]
+
+        T  = dt
+        T2 = dt*dt
 
         # for |Omega| < epsilon, eq. (11.7.2-7), p. 470
         if np.abs(Omega) < self.epsilon:
-            T  = dt
-            T2 = dt*dt
             return np.array([
-                [1, T, 0, 0, -0.5 * T2 * y_dot],
-                [0, 1, 0, 0, -T * y_dot],
-                [0, 0, 1, T,  0.5 * T2 * x_dot],
-                [0, 0, 0, 1,  T * x_dot],
-                [0, 0, 0, 0,  1]
+                [1, 0, 0, T, 0, 0, -0.5 * T2 * y_dot],
+                [0, 1, 0, 0, T, 0,  0.5 * T2 * x_dot],
+                [0, 0, 1, 0, 0, T,  0               ],
+                [0, 0, 0, 1, 0, 0, -T * y_dot       ],
+                [0, 0, 0, 0, 1, 0,  T * x_dot       ],
+                [0, 0, 0, 0, 0, 1,  0               ],
+                [0, 0, 0, 0, 0, 0,  1               ]
             ])
 
         # |Omega| > epsilon, eq. (11.7.2-3) and (11.7.2-4), p. 469
@@ -297,11 +281,13 @@ class CoordinatedTurn(KalmanFilter):
             f_Omega_4 = CT*XT - ST*YT
 
             return np.array([
-                [1, ST/Omega,     0, -(1-CT)/Omega, f_Omega_1],
-                [0, CT,           0, -ST,           f_Omega_2],
-                [0, (1-CT)/Omega, 1, ST/Omega,      f_Omega_3],
-                [0, ST,           0, CT,            f_Omega_4],
-                [0, 0,            0, 0,             1]
+                [1, 0, 0, ST/Omega,     -(1-CT)/Omega, 0, f_Omega_1],
+                [0, 1, 0, (1-CT)/Omega,  ST/Omega,     0, f_Omega_3],
+                [0, 0, 1, 0,             0,            T, 0        ],
+                [0, 0, 0, CT,           -ST,           0, f_Omega_2],
+                [0, 0, 0, ST,            CT,           0, f_Omega_4],
+                [0, 0, 0, 0,             0,            1, 0        ],
+                [0, 0, 0, 0,             0,            0, 1        ]
             ])
 
 
@@ -313,28 +299,27 @@ class CoordinatedTurn(KalmanFilter):
         # [x, x_dot, y, y_dot, omega]
         T = dt
         T2 = dt*dt
-        Gamma_CT = np.array([[T2/2, 0,    0],
-                            [T,    0,    0],
-                            [0,    T2/2, 0],
-                            [0,    T,    0],
-                            [0,    0,    T]])
+        Gamma_CT = np.array([[T2/2, 0,    0,    0],
+                             [0,    T2/2, 0,    0],
+                             [0,    0,    T2/2, 0],
+                             [T,    0,    0,    0],
+                             [0,    T,    0,    0],
+                             [0,    0,    T,    0],
+                             [0,    0,    0,    T]])
 
         return Gamma_CT @ self.Q_base @ Gamma_CT.T
 
 
     def initialize(self, x: ArrayLike, P: ArrayLike):
         x, P = np.array(x).squeeze(), np.array(P)
+        r, c = P.shape
 
-        assert len(x) == 2
-        assert P.shape == (2, 2)
+        assert len(x) <= len(self.x_hat)
+        assert r <= self.P_hat.shape[0]
+        assert c <= self.P_hat.shape[1]
 
-        self.x_hat[0, 0] = x[0]
-        self.x_hat[2, 0] = x[1]
-
-        self.P_hat[0, 0] = P[0, 0]
-        self.P_hat[2, 0] = P[1, 0]
-        self.P_hat[0, 2] = P[0, 1]
-        self.P_hat[2, 2] = P[1, 1]
+        self.x_hat[:len(x), 0] = x
+        self.P_hat[:r, :c] = P
     
     def predict(self, dt: float):
         assert dt > 0
