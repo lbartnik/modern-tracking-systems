@@ -20,6 +20,7 @@ class KalmanFilter(object):
         self.P_hat = self.P               # most recent predicted state covariance
 
     def initialize(self, x, P):
+        x = np.asarray(x).squeeze()
         self.x[:len(x),0] = x
         r, c = P.shape
         self.P[:r,:c] = P
@@ -37,7 +38,7 @@ class KalmanFilter(object):
 
 
     # update state with a measurement
-    def update(self, z):
+    def update(self, z, *args):
         z = np.array(z); z.shape = (self.spatial_dim, 1) # measurement, column vector
 
         # innovation covariance

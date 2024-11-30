@@ -4,7 +4,7 @@ from typing import List
 
 
 class SensorMeasurement:
-    def __init__(self, time: float, z: ArrayLike, R: ArrayLike):
+    def __init__(self, time: float, z: ArrayLike, R: ArrayLike, error: ArrayLike):
         """Construct a sensor measurement.
 
         Args:
@@ -13,8 +13,9 @@ class SensorMeasurement:
             R (ArrayLike): Measurement error covariance matrix.
         """
         self.time = time
-        self.z = np.array(z)
-        self.R = np.array(R)
+        self.z = np.asarray(z)
+        self.R = np.asarray(R)
+        self.e = np.asarray(error)
 
         assert self.z.squeeze().shape[0] == self.R.squeeze().shape[0]
         assert self.R.squeeze().shape[0] == self.R.squeeze().shape[1]
@@ -36,5 +37,6 @@ class GeometricSensor:
         position = np.array(position).squeeze()
         assert position.shape == (self.spatial_dim,), f"Position shape ({position.shape}) not equal to spatial dim {self.spatial_dim}"
 
-        measurement = self.rng.multivariate_normal(position, self.R, size=1)
-        return SensorMeasurement(t, measurement, self.R)
+        error = self.rng.multivariate_normal(np.zeros(self.spatial_dim), self.R, size=1)
+        measurement = position + error
+        return SensorMeasurement(t, measurement, self.R, error)

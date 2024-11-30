@@ -12,7 +12,7 @@ __all__ = ['CoordinatedTurn2D', 'CoordinatedTurn']
 # nearly coordinated turn; "Estimation with Applications to Tracking
 # and Navigation", pp. 467-470
 class CoordinatedTurn2D(KalmanFilter):
-    def __init__(self, H: ArrayLike, Q_sigmas: ArrayLike):
+    def __init__(self, Q_sigmas: ArrayLike):
         """Initialize a Coordinated-Turn Kalman Filter.
 
         Args:
@@ -22,14 +22,17 @@ class CoordinatedTurn2D(KalmanFilter):
                                   second element is the standard deviation for turn rate.
         """
         Q_sigmas = np.array(Q_sigmas).squeeze()
-        assert len(Q_sigmas) == 2
+        assert Q_sigmas.shape == (3,)
+        self.Q_base = np.diag(Q_sigmas) ** 2
 
         self.x_hat = np.zeros((5, 1))
-        self.P_hat = np.diag([1, 1, 1, 1, Q_sigmas[1]])
-        self.H = np.atleast_2d(H)
-        self.epsilon = 1e-6        
-        self.Q_base = np.diag([Q_sigmas[0], Q_sigmas[0], Q_sigmas[1]]) ** 2
-
+        self.P_hat = np.diag([Q_sigmas[0], Q_sigmas[0],
+                              Q_sigmas[1], Q_sigmas[1],
+                              Q_sigmas[2]])
+        self.H = np.atleast_2d([[1, 0, 0, 0, 0],
+                                [0, 0, 1, 0, 0]])
+        self.epsilon = 1e-6
+        
         self.K = None
 
     def f(self, dt: float) -> np.ndarray:
@@ -121,8 +124,9 @@ class CoordinatedTurn2D(KalmanFilter):
     def initialize(self, x: ArrayLike, P: ArrayLike):
         x, P = np.array(x).squeeze(), np.array(P)
 
-        assert len(x) == 2
-        assert P.shape == (2, 2)
+        assert len(x) >= 2
+        assert P.shape[0] >= 2
+        assert P.shape[1] >= 2
 
         self.x_hat[0, 0] = x[0]
         self.x_hat[2, 0] = x[1]
@@ -144,6 +148,7 @@ class CoordinatedTurn2D(KalmanFilter):
 
     def update(self, z: ArrayLike, R: ArrayLike):
         z, R = np.array(z).squeeze(), np.array(R).squeeze()
+        z, R = z[:2], R[:2, :2]
 
         assert len(z) == self.H.shape[0]
         assert R.shape == (len(z), len(z))

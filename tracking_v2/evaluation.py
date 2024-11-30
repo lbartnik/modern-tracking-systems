@@ -1,106 +1,249 @@
 import numpy as np
 import scipy as sp
+from typing import List
 
-from numpy.typing import ArrayLike
-from typing import List, Tuple
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-from .module import SingleTargetTracker
-from .target import Target
+from copy import deepcopy
 
-
-__all__ = ['nees', 'validate_kalman_filter']
+from .util import SubFigure
 
 
-def nees(truth: ArrayLike, x_hat: ArrayLike, P_hat: ArrayLike):
-    truth, x_hat, P_hat = np.array(truth), np.array(x_hat), np.array(P_hat)
+__all__ = ['Runner', 'run_one', 'run_many', 'evaluate_nees', 'evaluate_many', 'plot_nees']
 
-    assert len(truth.shape) == 2
 
-    # single run
-    if len(x_hat.shape) == 2:
-        assert len(P_hat.shape) == 3
-        assert truth.shape == x_hat.shape
-        assert P_hat.shape[0] == x_hat.shape[0]
-        assert P_hat.shape[1] == P_hat.shape[2]
-        assert P_hat.shape[1] == x_hat.shape[1]
 
-        d = (x_hat-truth).reshape(x_hat.shape[0], x_hat.shape[1], 1) # column vector
-        P_inv = np.linalg.inv(P_hat)
-        
-        return np.matmul(np.matmul(d.transpose(0, 2, 1), P_inv), d).squeeze()
+class Runner:
+    def __init__(self, target, sensor, kf):
+        self.target = target
+        self.sensor = sensor
+        self.kf = kf
 
-    # multiple run case
-    elif len(x_hat.shape) == 3:
-        assert len(P_hat.shape) == 4
-        assert truth.shape == x_hat.shape[1:]   # number of steps and state dimensions
-        assert x_hat.shape[0] == P_hat.shape[0] # number of runs
-        assert x_hat.shape[1] == P_hat.shape[1] # number of steps in each run
-        assert x_hat.shape[2] == P_hat.shape[2] # number of dimensions in KF state
-        assert P_hat.shape[2] == P_hat.shape[3] # covariance matrix is square
-        
-        d = x_hat - truth
-        d = d.reshape(x_hat.shape[0], x_hat.shape[1], x_hat.shape[2], 1) # column vector
-        P_inv = np.linalg.inv(P_hat)
+        self.truth = None
+        self.n = None
+        self.m = None
+        self.seeds = None
 
-        return np.matmul(np.matmul(d.transpose(0, 1, 3, 2), P_inv), d).squeeze()
+        self.one_x_hat, self.one_P_hat = [], []
+        self.many_x_hat, self.many_P_hat = [], []
+
+    def before_many(self):
+        self.many_x_hat = []
+        self.many_P_hat = []
+
+    def before_one(self):
+        self.one_x_hat = []
+        self.one_P_hat = []
+
+    def after_predict(self):
+        self.one_x_hat.append(np.copy(self.kf.x_hat))
+        self.one_P_hat.append(np.copy(self.kf.P_hat))
     
-    else:
-        raise Exception("Unsupported input shape")
+    def after_update(self, m):
+        pass
+
+    def after_one(self):
+        self.one_x_hat = np.array(self.one_x_hat)
+        self.one_P_hat = np.array(self.one_P_hat)
+
+        assert self.one_x_hat.shape[0] == self.n
+        assert self.one_P_hat.shape[0] == self.n
+
+        self.many_x_hat.append(self.one_x_hat)
+        self.many_P_hat.append(self.one_P_hat)
+
+    def after_many(self):
+        self.many_x_hat = np.array(self.many_x_hat)
+        self.many_P_hat = np.array(self.many_P_hat)
+
+        assert self.many_x_hat.shape[0] == self.m
+        assert self.many_P_hat.shape[0] == self.m
 
 
 
-class KalmanFilterValidationReport:
-    def __init__(self, nees_scores: ArrayLike, mc_runs: int):
-        nees_scores = np.array(nees_scores)
-        assert len(nees_scores.shape) == 2
-
-        self.nees_scores = nees_scores
-        self.mc_runs = mc_runs
-
-    def confidence_interval(self):
-        """Two-tailed Chi square confidence interval for the p-value 0.05
-        """
-
-        # the number of columns is equal to state_dim * mc_runs (the product of the
-        # number of KF state dimensions and the number of Monte-Carlo runs)
-        degrees_of_freedom = self.nees_scores.shape[1]
-
-        p = 0.05
-        return sp.stats.chi2.ppf([p/2, 1-p/2], degrees_of_freedom) / self.mc_runs
-
-    def is_valid(self):
-        average_nees_scores = np.sum(self.nees_scores, axis=0) / self.mc_runs
-        ci = self.confidence_interval()
-        within_range = np.bitwise_and(average_nees_scores > ci[0],
-                                      average_nees_scores < ci[1])
+    def run_one(self, n):
+        T = 1
+        t = 0
+        self.n = n
         
-        if np.mean(within_range) > 0.05:
-            print(f"More than 5% NEES scores outside of confidence interval ({ci[0]}, {ci[1]}): {np.mean(within_range)}")
-            return False
-        else:
-            print(f"Less than 5% NEES scores outside of confidence interval ({ci[0]}, {ci[1]}): {np.mean(within_range)}")
-            return True
-
-
-def validate_kalman_filter(trackers: List[SingleTargetTracker], target: Target):
-    time, x_hat, P_hat, innovation = None, [], [], []
-
-    for tracker in trackers:
-        t_time, t_x_hat, t_P_hat, t_innovation = list(zip(*tracker.filter_trace))
+        self.before_one()
+        self.truth = self.target.true_states(T, n+1)
         
-        assert t_innovation[0] is None
-        if time is None:
-            time = np.array(t_time)
-        else:
-            assert np.array_equal(time, t_time)
+        m = self.sensor.generate_measurement(t, self.truth[0, :3])
+        self.kf.initialize(m.z, m.R)
 
-        x_hat.append(np.array(t_x_hat))
-        P_hat.append(np.array(t_P_hat))
-        innovation.append(np.array(t_innovation[1:]))
+        for position in self.truth[1:, :3]:
+            t += T
 
-    x_hat, P_hat, innovation = np.array(x_hat).squeeze(), np.array(P_hat).squeeze(), np.array(innovation).squeeze()
+            self.kf.predict(T)
 
-    mc_runs = len(trackers)
-    nees_scores = nees(target.true_states(T=time), x_hat, P_hat)
+            self.after_predict()
 
-    return KalmanFilterValidationReport(nees_scores, mc_runs)
+            m = self.sensor.generate_measurement(t, position)
+            self.kf.update(m.z, m.R)
+
+            self.after_update(m)
+
+        self.after_one()
+
+
+
+    def run_many(self, m, n, seeds=None):
+        if seeds is None:
+            seeds = np.arange(m)
+        assert m == len(seeds)
+        
+        self.n = n
+        self.m = m
+        self.seeds = seeds
+
+        kf_orig = deepcopy(self.kf)
+
+        self.before_many()
+        for seed in seeds:
+            self.sensor.reset_seed(seed)
+            self.kf = deepcopy(kf_orig)
+
+            self.run_one(n)
+        
+        self.kf = kf_orig
+        self.after_many()
+
+
+def run_one(n, target, sensor, kf):
+    runner = Runner(target, sensor, kf)
+    runner.run_one(n)
+    return runner.one_x_hat, runner.one_P_hat, runner.truth[1:,:]
+
+
+def run_many(m, n, target, sensor, kf, seeds=None):
+    runner = Runner(target, sensor, kf)
+    runner.run_many(m, n, seeds)
+    return runner.many_x_hat, runner.many_P_hat, runner.truth[1:,:]
+
+
+
+class NeesEvaluationResult:
+    def __init__(self, scores, dim):
+        self.scores = scores
+        self.dim = dim
+
+
+def evaluate_nees(x_hat, P_hat, truth):
+    # if data comes from single run, add a dimension in the front
+    if len(x_hat.shape) == 3 and len(P_hat.shape) == 3:
+        x_hat = np.expand_dims(x_hat, 0)
+        P_hat = np.expand_dims(P_hat, 0)
+
+    # the rest of the code expects 4-dimensional data:
+    # MC-runs x run-length x spatial-dimensions x (1 | spatial-dimensions)
+    assert len(x_hat.shape) == 4
+    assert len(P_hat.shape) == 4
+    assert len(truth.shape) == 2
+    
+    dim   = truth.shape[1]
+    
+    truth = truth.reshape((1, truth.shape[0], truth.shape[1], 1)) # column vector
+    diff  = x_hat - truth
+    P_inv = np.linalg.inv(P_hat)
+    
+    scores = np.matmul(np.matmul(diff.transpose(0, 1, 3, 2), P_inv), diff).squeeze()
+    return NeesEvaluationResult(scores, dim)
+
+
+class EvaluationResult:
+    def __init__(self, position_nees, velocity_nees):
+        self.position_nees = position_nees
+        self.velocity_nees = velocity_nees
+
+    
+def evaluate_many(x_hat, P_hat, truth):
+    assert len(x_hat.shape) == 4
+    assert len(P_hat.shape) == 4
+    assert len(truth.shape) == 2
+    
+    assert x_hat.shape[0] == P_hat.shape[0] # number of independent runs
+    assert x_hat.shape[1] == P_hat.shape[1] # length of a single run
+    assert x_hat.shape[2] == P_hat.shape[2] # number of state dimensions
+    assert P_hat.shape[2] == P_hat.shape[3] # P_hat is a square matrix
+    assert x_hat.shape[3] == 1              # x_hat is a column vector
+    
+    return EvaluationResult(
+        evaluate_nees(x_hat[:,:,:3,:], P_hat[:,:,:3,:3], truth[:,:3]),
+        evaluate_nees(x_hat[:,:,3:,:], P_hat[:,:,3:,3:], truth[:,3:])
+    )
+
+
+
+
+
+def plot_nees(nees: NeesEvaluationResult, skip=25):
+    scores = nees.scores[:, skip:]
+    dim    = nees.dim
+    
+    # confidence interval for the mean
+    run_count = scores.shape[0]
+    ci_mean = sp.stats.chi2.ppf([0.025, 0.975], run_count * dim) / run_count
+
+    mean_score = np.mean(scores, axis=0)
+
+
+    # confidence interval for individual runs
+    ci_qs = sp.stats.chi2.ppf([0.025, 0.975], dim)
+
+    fig = make_subplots(rows=2, cols=2,
+                        specs=[[{"colspan": 2}, None], [{}, {}]])
+    tm = SubFigure(fig, 1, 1)
+    h1 = SubFigure(fig, 2, 1)
+    h2 = SubFigure(fig, 2, 2)
+
+
+    # -- time plot
+    x = np.arange(scores.shape[1])
+    
+    tm.add_trace(go.Scatter(x=x, y=np.median(scores, axis=0), mode='lines', marker_color='blue', name='median'))
+    tm.add_trace(go.Scatter(x=x, y=mean_score, mode='lines', marker_color='red', name='mean'))
+    
+    # confidence interval for the mean
+    tm.add_hline(y=ci_mean[0], line_width=.5, line_dash="dash", line_color="red")
+    tm.add_hline(y=ci_mean[1], line_width=.5, line_dash="dash", line_color="red")
+
+    tm.add_hline(y=ci_qs[0], line_width=.5, line_dash="dash", line_color="green")
+    tm.add_hline(y=ci_qs[1], line_width=.5, line_dash="dash", line_color="green")
+
+    # observed quantiles
+    q025 = np.quantile(scores, .025, axis=0)
+    q975 = np.quantile(scores, .975, axis=0)
+
+    q_color = 'rgba(143,188,143, 0.5)'
+    tm.add_trace(go.Scatter(x=x, y=q025, fill=None, mode='lines', marker_color=q_color, showlegend=False, legendgroup='conf_int'))
+    tm.add_trace(go.Scatter(x=x, y=q975, fill='tonexty', mode='lines', fillcolor=q_color, line_color=q_color, legendgroup='conf_int', name='95% conf'))
+        
+    
+    # -- histogram of mean
+    h1.add_trace(go.Histogram(x=mean_score, nbinsx=40, name='mean'))
+    h1.add_vline(x=ci_mean[0], line_width=.5, line_dash="dash", line_color="red")
+    h1.add_vline(x=ci_mean[1], line_width=.5, line_dash="dash", line_color="red")
+
+    lower = np.mean(mean_score < ci_mean[0])
+    upper = np.mean(ci_mean[1] < mean_score)
+    center = 1 - lower - upper
+    h1.add_annotation(text=f"{round(lower*100, 2)}%", xref="x domain", yref="y domain", x=0, y=1, showarrow=False)
+    h1.add_annotation(text=f"{round(center*100, 2)}%", xref="x domain", yref="y domain", x=.5, y=1, showarrow=False)
+    h1.add_annotation(text=f"{round(upper*100, 2)}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
+
+
+    # -- histogram of all data
+    h2.add_trace(go.Histogram(x=scores.reshape(-1), nbinsx=40, name='data'))
+    h2.add_vline(x=ci_qs[0], line_width=.5, line_dash="dash", line_color="red")
+    h2.add_vline(x=ci_qs[1], line_width=.5, line_dash="dash", line_color="red")
+
+    data_mass = np.mean(np.logical_and(ci_qs[0] <= scores.reshape(-1), scores.reshape(-1) <= ci_qs[1]))
+    h2.add_annotation(text=f"Mass within bounds: {round(data_mass*100, 2)}%", xref="x domain", yref="y domain", x=0, y=1, showarrow=False)
+
+
+
+    fig.update_layout(height=700)    
+    return fig
+
