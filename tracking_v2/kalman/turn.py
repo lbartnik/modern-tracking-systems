@@ -180,13 +180,18 @@ class CoordinatedTurn2D(KalmanFilter):
 
 
 class CoordinatedTurn(KalmanFilter):
+    """Nearly Coordinated-Turn model for 3D Cartesian space.
+
+    Model is described "Estimation with Applications to Tracking and Navigation",
+    pp. 467-477. Except, state in this implementation is defined as
+    [x, y, z, x_dot, y_dot, z_dot, omega] rather than [x, x_dot, y, y_dot, omega].
+    """
     def __init__(self, Q_sigmas: ArrayLike):
         """Initialize a Coordinated-Turn Kalman Filter.
 
         Args:
-            H (ArrayLike): Measurement matrix.
-            Q_sigmas (ArrayLike): Process noise standard deviations; 4 elements: three spatial
-                                  dimensions and the turn rate.
+            Q_sigmas (ArrayLike): Process noise standard deviations; 4 elements:
+                                  three spatial dimensions and the turn rate.
         """
         
         self.state_dim = 7
@@ -206,8 +211,12 @@ class CoordinatedTurn(KalmanFilter):
         self.H = np.array([[1, 0, 0, 0, 0, 0, 0],
                            [0, 1, 0, 0, 0, 0, 0],
                            [0, 0, 1, 0, 0, 0, 0]])
+        
+        # treat Omega less that epsilon as zero        
         self.epsilon = 1e-6
-        self.K = None
+
+        # clamp Omega to +/- this value
+        self.max_omega = 0.25 * np.pi/180
 
     def f(self, dt: float) -> np.ndarray:
         # state prediction matrix, eq. 11.7.1-4, p. 468
@@ -334,6 +343,8 @@ class CoordinatedTurn(KalmanFilter):
         Q   = self.Q(dt)
         
         self.x_hat = f @ self.x_hat
+        self.x_hat[6, 0] = np.clip(self.x_hat[6, 0], -self.max_omega, self.max_omega)
+
         self.P_hat = f_x @ self.P_hat @ f_x.T + Q
 
     def update(self, z: ArrayLike, R: ArrayLike):
@@ -355,6 +366,8 @@ class CoordinatedTurn(KalmanFilter):
         # filtered state (mean)
         # X = X + K(z - H*X)
         x = self.x_hat + K @ innovation
+
+        x[6, 0] = np.clip(x[6, 0], -self.max_omega, self.max_omega)
         
         # filtered state (covariance)
         # P = P - K*S*K

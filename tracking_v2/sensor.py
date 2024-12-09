@@ -15,7 +15,7 @@ class SensorMeasurement:
         self.time = time
         self.z = np.asarray(z)
         self.R = np.asarray(R)
-        self.e = np.asarray(error)
+        self.error = np.asarray(error)
 
         assert self.z.squeeze().shape[0] == self.R.squeeze().shape[0]
         assert self.R.squeeze().shape[0] == self.R.squeeze().shape[1]

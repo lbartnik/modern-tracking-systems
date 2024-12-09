@@ -1,16 +1,16 @@
 import numpy as np
 import scipy as sp
-from typing import List
 
+import plotly.express as ex
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from copy import deepcopy
 
-from .util import SubFigure
+from .util import SubFigure, to_df
 
 
-__all__ = ['Runner', 'run_one', 'run_many', 'evaluate_nees', 'evaluate_many', 'plot_nees']
+__all__ = ['Runner', 'run_one', 'run_many', 'evaluate_nees', 'evaluate_many', 'plot_nees', 'plot_error', 'plot_3d']
 
 
 
@@ -40,6 +40,9 @@ class Runner:
         self.one_x_hat.append(np.copy(self.kf.x_hat))
         self.one_P_hat.append(np.copy(self.kf.P_hat))
     
+    def after_initialize(self):
+        pass
+
     def after_update(self, m):
         pass
 
@@ -72,6 +75,8 @@ class Runner:
         
         m = self.sensor.generate_measurement(t, self.truth[0, :3])
         self.kf.initialize(m.z, m.R)
+
+        self.after_initialize()
 
         for position in self.truth[1:, :3]:
             t += T
@@ -121,6 +126,65 @@ def run_many(m, n, target, sensor, kf, seeds=None):
     runner = Runner(target, sensor, kf)
     runner.run_many(m, n, seeds)
     return runner.many_x_hat, runner.many_P_hat, runner.truth[1:,:]
+
+
+
+
+
+
+def plot_error(runner, skip=0, run=0):
+    assert runner.m == 1
+
+    tm  = np.arange(runner.n-skip).reshape((-1, 1))
+    err = runner.many_x_hat[run, skip:,:3,0] - runner.truth[(skip+1):,:3]
+
+    df = to_df(np.concatenate((tm, err), axis=1), columns=['time', 'x', 'y', 'z'])
+    df = df.melt(['time'], ['x', 'y', 'z'], 'dim', 'error')
+
+    fig = ex.line(df, x='time', y='error', facet_row='dim')
+    fig.update_yaxes(matches=None)
+
+    return fig
+
+
+
+
+def plot_3d(runner, skip=0, run=0):
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter3d(x=runner.many_x_hat[run, skip:,0,0],
+                               y=runner.many_x_hat[run, skip:,1,0],
+                               z=runner.many_x_hat[run, skip:,2,0],
+                               name='x_hat',
+                               marker=dict(
+                                   size=.1
+                               )))
+
+    fig.add_trace(go.Scatter3d(x=runner.truth[(skip+1):,0],
+                               y=runner.truth[(skip+1):,1],
+                               z=runner.truth[(skip+1):,2],
+                               name='truth',
+                               marker=dict(
+                                   size=.1
+                               )))
+
+    return fig
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -174,6 +238,9 @@ def evaluate_many(x_hat, P_hat, truth):
         evaluate_nees(x_hat[:,:,3:,:], P_hat[:,:,3:,3:], truth[:,3:])
     )
 
+
+def evaluate_runner(runner):
+    return evaluate_many(runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], runner.truth[1:, :])
 
 
 
