@@ -25,15 +25,17 @@ class LinearKalmanFilter(KalmanFilter):
         
         assert self.H.shape[1] == self.motion_model.state_dim
 
+        self.space_dim = 3
+        self.state_dim = self.motion_model.state_dim
+
+        self.reset()
+    
+    def reset(self):
         self.x_hat = as_column(np.zeros(self.motion_model.state_dim))
         self.P_hat = np.eye(self.motion_model.state_dim)
 
         self.innovation = None
         self.S = None
-
-        self.space_dim = 3
-        self.state_dim = self.motion_model.state_dim
-    
 
     def initialize(self, x: ArrayLike, P: ArrayLike):
         """Initialize the Kalman Filter state. If `x` has N elements, the shape of `P` must

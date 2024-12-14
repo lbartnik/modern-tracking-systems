@@ -5,12 +5,10 @@ import plotly.express as ex
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from copy import deepcopy
-
-from .util import SubFigure, to_df
+from .util import SubFigure, to_df, colorscale
 
 
-__all__ = ['Runner', 'run_one', 'run_many', 'evaluate_nees', 'evaluate_many', 'plot_nees', 'plot_error', 'plot_3d']
+__all__ = ['Runner', 'run_one', 'run_many', 'evaluate_nees', 'evaluate_many', 'plot_nees', 'plot_error', 'plot_2d', 'plot_3d']
 
 
 
@@ -96,23 +94,21 @@ class Runner:
 
     def run_many(self, m, n, seeds=None):
         if seeds is None:
-            seeds = np.arange(m)
+            seeds = np.arange(12345, 12345+m)
         assert m == len(seeds)
         
         self.n = n
         self.m = m
         self.seeds = seeds
 
-        kf_orig = deepcopy(self.kf)
-
         self.before_many()
         for seed in seeds:
             self.sensor.reset_seed(seed)
-            self.kf = deepcopy(kf_orig)
+            self.kf.reset()
 
             self.run_one(n)
         
-        self.kf = kf_orig
+        self.kf.reset()
         self.after_many()
 
 
@@ -145,6 +141,26 @@ def plot_error(runner, skip=0, run=0):
     fig.update_yaxes(matches=None)
 
     return fig
+
+
+
+
+def plot_2d(runner, skip=0, run=0):
+    tm = np.arange(runner.truth.shape[0])
+    cl = colorscale(n=2)
+
+    fig = make_subplots(rows=3, cols=1,)
+    
+    fig.add_trace(go.Scatter(x=tm, y=runner.many_x_hat[run, skip:,0,0], name='x_hat', legendgroup='x_hat', marker=dict(size=.1, color=cl[0])), row=1, col=1)
+    fig.add_trace(go.Scatter(x=tm, y=runner.many_x_hat[run, skip:,1,0], name='x_hat', legendgroup='x_hat', showlegend=False, marker=dict(size=.1, color=cl[0])), row=2, col=1)
+    fig.add_trace(go.Scatter(x=tm, y=runner.many_x_hat[run, skip:,2,0], name='x_hat', legendgroup='x_hat', showlegend=False, marker=dict(size=.1, color=cl[0])), row=3, col=1)
+    
+    fig.add_trace(go.Scatter(x=tm, y=runner.truth[(skip+1):,0], name='truth', legendgroup='truth', marker=dict(size=.1, color=cl[1])), row=1, col=1)
+    fig.add_trace(go.Scatter(x=tm, y=runner.truth[(skip+1):,1], name='truth', legendgroup='truth', showlegend=False, marker=dict(size=.1, color=cl[1])), row=2, col=1)
+    fig.add_trace(go.Scatter(x=tm, y=runner.truth[(skip+1):,2], name='truth', legendgroup='truth', showlegend=False, marker=dict(size=.1, color=cl[1])), row=3, col=1)
+
+    return fig
+
 
 
 

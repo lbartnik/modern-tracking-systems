@@ -15,6 +15,9 @@ class CartesianStateTransform:
     number of state dimensions. Missing dimensions in both mean and covariance
     (e.g. acceleration missing from a constant-velocity model) are filled with
     zeros.
+
+    See: Section 4.5.4. "Combining Different State Models", pp. 227-229 in
+    "Design and Analysis of Modern Tracking Systems".
     """
     def __init__(self, common_state_dim: int):
         self.common_state_dim = common_state_dim

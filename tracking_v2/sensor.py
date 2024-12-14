@@ -24,13 +24,13 @@ class SensorMeasurement:
 class GeometricSensor:
     spatial_dim: int
 
-    def __init__(self, R: np.ndarray = np.eye(3), seed: int = None):
+    def __init__(self, R: np.ndarray = np.eye(3), seed: int = 12345):
         self.spatial_dim = 3
         self.R = np.array(R)
         assert self.R.shape == (self.spatial_dim, self.spatial_dim)
         self.reset_seed(seed)
     
-    def reset_seed(self, seed: int = None):
+    def reset_seed(self, seed: int = 12345):
         self.rng = np.random.default_rng(seed=seed)
 
     def generate_measurement(self, t: float, position: np.ndarray) -> SensorMeasurement:

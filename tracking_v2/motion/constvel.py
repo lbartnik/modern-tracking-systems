@@ -14,8 +14,8 @@ class ConstantVelocityModel(MotionModel):
         """Initialize the CV motion model.
 
         Args:
-            noise_intensity (float, optional): Standard deviation-like parameter,
-                used to calculate the process noise covariance matrix. Defaults to 1.
+            noise_intensity (float, optional): Multiplier for the process noise
+                covariance matrix. Its physical dimension is [length]^2 / [time]^3.
         """
         self.state_dim = 6
         self.noise_intensity = noise_intensity
@@ -45,4 +45,4 @@ class ConstantVelocityModel(MotionModel):
                          [0, 0, dt3, 0, 0, dt2],
                          [dt2, 0, 0, dt, 0, 0],
                          [0, dt2, 0, 0, dt, 0],
-                         [0, 0, dt2, 0, 0, dt]]) * self.noise_intensity**2
+                         [0, 0, dt2, 0, 0, dt]]) * self.noise_intensity

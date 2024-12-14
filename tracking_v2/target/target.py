@@ -29,3 +29,6 @@ class Target(object):
 
     def true_state(self, t: float) -> np.ndarray:
         return self.true_states()[t, :]
+
+    def __repr__(self):
+        return self.name

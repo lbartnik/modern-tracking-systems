@@ -13,6 +13,9 @@ class KalmanFilter(object):
     state_dim: int
     space_dim: int
 
+    def reset(self):
+        raise Exception(f"reset() method not implemented in {self.__class__.__name__}")
+
     def initialize(self, x: ArrayLike, P: ArrayLike):
         raise Exception(f"initialize() method not implemented in {self.__class__.__name__}")
 
