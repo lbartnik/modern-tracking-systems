@@ -25,10 +25,14 @@ class Runner:
 
         self.one_x_hat, self.one_P_hat = [], []
         self.many_x_hat, self.many_P_hat = [], []
+        self.one_truth, self.many_truth = [], []
+
+        self.dim = 3
 
     def before_many(self):
         self.many_x_hat = []
         self.many_P_hat = []
+        self.many_truth = []
 
     def before_one(self):
         self.one_x_hat = []
@@ -53,13 +57,18 @@ class Runner:
 
         self.many_x_hat.append(self.one_x_hat)
         self.many_P_hat.append(self.one_P_hat)
+        
+        self.one_truth = np.copy(self.truth)
+        self.many_truth.append(self.one_truth)
 
     def after_many(self):
         self.many_x_hat = np.array(self.many_x_hat)
         self.many_P_hat = np.array(self.many_P_hat)
+        self.many_truth = np.array(self.many_truth)
 
         assert self.many_x_hat.shape[0] == self.m
         assert self.many_P_hat.shape[0] == self.m
+        assert self.many_truth.shape[0] == self.m
 
 
 
@@ -71,12 +80,12 @@ class Runner:
         self.before_one()
         self.truth = self.target.true_states(T, n+1)
         
-        m = self.sensor.generate_measurement(t, self.truth[0, :3])
+        m = self.sensor.generate_measurement(t, self.truth[0, :self.dim])
         self.kf.initialize(m.z, m.R)
 
         self.after_initialize()
 
-        for position in self.truth[1:, :3]:
+        for position in self.truth[1:, :self.dim]:
             t += T
 
             self.kf.predict(T)
@@ -94,7 +103,9 @@ class Runner:
 
     def run_many(self, m, n, seeds=None):
         if seeds is None:
-            seeds = np.arange(12345, 12345+m)
+            seeds = np.arange(m)
+        elif isinstance(seeds, int):
+            seeds = seeds + np.arange(m)
         assert m == len(seeds)
         
         self.n = n
@@ -220,15 +231,23 @@ def evaluate_nees(x_hat, P_hat, truth):
     # MC-runs x run-length x spatial-dimensions x (1 | spatial-dimensions)
     assert len(x_hat.shape) == 4
     assert len(P_hat.shape) == 4
-    assert len(truth.shape) == 2
+    assert len(truth.shape) in [2, 3, 4]
     
-    dim   = truth.shape[1]
+    dim   = truth.shape[-1]
     
-    truth = truth.reshape((1, truth.shape[0], truth.shape[1], 1)) # column vector
+    if len(truth.shape) == 2:
+        truth = truth.reshape((1, truth.shape[0], truth.shape[1], 1))
+    elif len(truth.shape) == 3:
+        if truth.shape[-1] == 1:
+            truth = truth.reshape((1, truth.shape[0], truth.shape[1], truth.shape[2]))
+        else:
+            truth = truth.reshape((truth.shape[0], truth.shape[1], truth.shape[2], 1))
+    
     diff  = x_hat - truth
     P_inv = np.linalg.inv(P_hat)
     
     scores = np.matmul(np.matmul(diff.transpose(0, 1, 3, 2), P_inv), diff).squeeze()
+    scores = np.atleast_2d(scores)
     return NeesEvaluationResult(scores, dim)
 
 
@@ -241,7 +260,7 @@ class EvaluationResult:
 def evaluate_many(x_hat, P_hat, truth):
     assert len(x_hat.shape) == 4
     assert len(P_hat.shape) == 4
-    assert len(truth.shape) == 2
+    assert len(truth.shape) in [2, 3]
     
     assert x_hat.shape[0] == P_hat.shape[0] # number of independent runs
     assert x_hat.shape[1] == P_hat.shape[1] # length of a single run
@@ -249,16 +268,21 @@ def evaluate_many(x_hat, P_hat, truth):
     assert P_hat.shape[2] == P_hat.shape[3] # P_hat is a square matrix
     assert x_hat.shape[3] == 1              # x_hat is a column vector
     
+    if len(truth.shape) == 2:
+        truth = np.expand_dims(truth, 0)
+
     return EvaluationResult(
-        evaluate_nees(x_hat[:,:,:3,:], P_hat[:,:,:3,:3], truth[:,:3]),
-        evaluate_nees(x_hat[:,:,3:,:], P_hat[:,:,3:,3:], truth[:,3:])
+        evaluate_nees(x_hat[:,:,:3,:], P_hat[:,:,:3,:3], truth[:, :,:3]),
+        evaluate_nees(x_hat[:,:,3:,:], P_hat[:,:,3:,3:], truth[:, :,3:])
     )
 
 
 def evaluate_runner(runner):
-    return evaluate_many(runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], runner.truth[1:, :])
+    return evaluate_many(runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], runner.many_truth[:, 1:, :])
 
 
+def nees_ci(runner):
+    return sp.stats.chi2.ppf([0.025, 0.975], runner.m * runner.dim) / runner.m
 
 
 def plot_nees(nees: NeesEvaluationResult, skip=25):
