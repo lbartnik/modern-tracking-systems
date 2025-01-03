@@ -1,4 +1,5 @@
 from .constvel import ConstantVelocityTarget
+from .nca import NearConstantAccelerationTarget
 from .ncv import NearConstantVelocityTarget
 from .turns import SingleTurnTarget, SinusTarget
 from .singer import SingerTarget

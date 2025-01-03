@@ -7,15 +7,17 @@ __all__ = ['ConstantVelocityModel']
 
 class ConstantVelocityModel(MotionModel):
     """Near-Constant-Velocity motion model.
-
-    Models a target moving with nearly-constant velocity and whose acceleration is
-    modeled as a continuous-time, white-noise random process.
+    
+    Also called Continuous White-Noise Acceleration (CWNA) motion model. Assumes
+    a target moving with nearly-constant velocity, whose acceleration is modeled
+    as a continuous-time, white-noise random process.
      
-    Defined in "Estimation with Applications to Tracking and Navigation", p. 270
+    Defined in "Estimation with Applications to Tracking and Navigation",
+    pp. 269-270.
     """
 
     def __init__(self, noise_intensity: float = 1):
-        """Initialize the CV motion model.
+        """Initialize the NCV motion model.
 
         Args:
             noise_intensity (float, optional): Multiplier for the process noise

@@ -5,10 +5,10 @@ from typing import List, Union
 from .target import Target
 
 
-__all__ = ['NearConstantVelocityTarget']
+__all__ = ['NearConstantAccelerationTarget']
 
 
-class NearConstantVelocityTarget(Target):
+class NearConstantAccelerationTarget(Target):
     """Near-Constant-Velocity target. Approximates a continuous-time random process
     where acceleration is models as (continuous-time) white noise.
     
@@ -36,7 +36,7 @@ class NearConstantVelocityTarget(Target):
         Args:
             speed (float, optional): Linear velocity, in m/s. Defaults to 30.
             initial_position (ArrayLike): Initial position of the target.
-            noise_intensity (float): Noise intensity. Physical unit is [length]^2 / [time]^3
+            noise_intensity (float): Noise intensity. Physical unit is [length]^2 / [time]^5
             seed (int): Seed for random generator (used when noise intensity is non-zero).
             report (str): State parts to report. Accepted values as "position" and "position+velocity".
             integration_steps_count (int): Approximate the continuous-time white-noise acceleration by
@@ -75,7 +75,8 @@ class NearConstantVelocityTarget(Target):
         """
         states = []
         current_pos = self.initial_position
-        vel = self.velocity * self.speed
+        current_vel = self.velocity * self.speed
+        current_acc = np.zeros(3)
 
         if isinstance(T, (int, float)):
             tm = np.arange(0, n, T)
@@ -93,13 +94,14 @@ class NearConstantVelocityTarget(Target):
                 dt = T / self.integration_steps_count
                 sigma = np.sqrt(self.noise_intensity * dt)
                 for _ in range(self.integration_steps_count):
-                    vel += rng.normal(0, sigma, 3)
-                    current_pos = current_pos + vel * dt
+                    current_acc += rng.normal(0, sigma, 3)
+                    current_vel += current_acc * dt
+                    current_pos = current_pos + current_vel * dt
             else:
-                current_pos = current_pos + vel * dt
+                current_pos = current_pos + current_vel * dt
             
             if self.report == 'position+velocity':
-                states.append(np.concatenate((current_pos, vel)))
+                states.append(np.concatenate((current_pos, current_vel)))
             else:
                 states.append(current_pos)
 
