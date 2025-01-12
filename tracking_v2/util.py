@@ -2,12 +2,16 @@ import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
 import plotly
+import os
+
+import IPython.display as ipython
+import ipywidgets.widgets as widgets
 
 from numpy.typing import ArrayLike
 from typing import Any, Dict, Iterable, List, Union
 
 
-__all__ = ['SubFigure', 'to_df', 'colorscale']
+__all__ = ['SubFigure', 'to_df', 'colorscale', 'display']
 
 
 class SubFigure:
@@ -80,3 +84,43 @@ def colorscale(x: Iterable[Any] = None, n: int = None, alpha: float = None) -> U
         rgb = [f"rgba{name[3:-1]}, {alpha})" for name in rgb]
 
     return rgb if x is None else dict(zip(x, rgb))
+
+
+
+class DisplayProcessor:
+    def __init__(self):
+        self.as_png   = True
+        self._count   = 0
+        self._pattern = 'images/fig{count:02d}.png'
+
+    def __call__(self, fig, as_png: bool = None):
+        if (as_png is not None and not as_png) or not self.as_png:
+            ipython.display(fig)
+            return
+        
+        path = self._pattern.format(count = self._count)
+        self._count += 1
+
+        dirname = os.path.dirname(path)
+        if not os.path.exists(dirname):
+            os.mkdir(dirname)
+
+        fig.write_image(path)
+        ipython.display(ipython.Image(filename=path))
+
+
+display = DisplayProcessor()
+
+
+def columns(*figs):
+    width = int(100 / len(figs))
+    
+    outputs = []
+    for fig in figs:
+        output = widgets.Output(layout={'width': f'{width}%'})
+        with output:
+            display(fig)
+        outputs.append(output)
+  
+    column_layout = widgets.HBox(outputs)
+    ipython.display(column_layout)

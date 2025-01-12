@@ -104,8 +104,6 @@ class Runner:
     def run_many(self, m, n, seeds=None):
         if seeds is None:
             seeds = np.arange(m)
-        elif isinstance(seeds, int):
-            seeds = seeds + np.arange(m)
         assert m == len(seeds)
         
         self.n = n
@@ -278,7 +276,7 @@ def evaluate_many(x_hat, P_hat, truth):
 
 
 def evaluate_runner(runner):
-    return evaluate_many(runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], runner.many_truth[:, 1:, :])
+    return evaluate_many(runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], runner.many_truth[:, 1:, :6])
 
 
 def nees_ci(runner):

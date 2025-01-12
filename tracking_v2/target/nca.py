@@ -15,7 +15,7 @@ class NearConstantAccelerationTarget(Target):
     Described in "Estimation with Applications to Tracking and Navigation", pp. 269-270."""
 
     def __init__(self, speed: float = 30, initial_position: ArrayLike = [0, 0, 0], noise_intensity: float = 0,
-                 seed: int = None, report: str = "position+velocity", integration_steps_count: int = 100):
+                 seed: int = None, report: str = "position+velocity+acceleration", integration_steps_count: int = 100):
         """Initialize target generator.
 
         The random seed defaults to `None` which means that each generation of target
@@ -38,7 +38,8 @@ class NearConstantAccelerationTarget(Target):
             initial_position (ArrayLike): Initial position of the target.
             noise_intensity (float): Noise intensity. Physical unit is [length]^2 / [time]^5
             seed (int): Seed for random generator (used when noise intensity is non-zero).
-            report (str): State parts to report. Accepted values as "position" and "position+velocity".
+            report (str): State parts to report. Accepted values as "position", "position+velocity",
+                "position+velocity+acceleration".
             integration_steps_count (int): Approximate the continuous-time white-noise acceleration by
                 integrating over this many steps.
         """
@@ -52,7 +53,7 @@ class NearConstantAccelerationTarget(Target):
         self.noise_intensity = noise_intensity
         self.integration_steps_count = integration_steps_count
 
-        assert report in ['position', 'position+velocity']
+        assert report in ['position', 'position+velocity', 'position+velocity+acceleration']
         self.report = report
 
     @property
@@ -100,7 +101,9 @@ class NearConstantAccelerationTarget(Target):
             else:
                 current_pos = current_pos + current_vel * dt
             
-            if self.report == 'position+velocity':
+            if self.report == 'position+velocity+acceleration':
+                states.append(np.concatenate((current_pos, current_vel, current_acc)))
+            elif self.report == 'position+velocity':
                 states.append(np.concatenate((current_pos, current_vel)))
             else:
                 states.append(current_pos)

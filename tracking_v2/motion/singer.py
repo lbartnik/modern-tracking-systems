@@ -7,31 +7,41 @@ __all__ = ['SingerAccelerationModel']
 
 
 class SingerAccelerationModel:
-    """Singer target maneuver model takes the target states to be position, velocity,
+    """Singer Acceleration Motion Model
+
+    Singer target maneuver model takes the target states to be position, velocity,
     and acceleration and assumes the target acceleration to be a first-order Markov
     process.
+
+    Defined in "Design and Analysis of Modern Tracking Systems", pp. 200-203.
     """
 
-    def __init__(self, tau: float, sigma: float):
+    def __init__(self, tau: float, sigma: float = None, noise_intensity: float = None):
         """Construct a Single acceleration model.
 
         Sigma is the parameter name used in the formulation Singer motion model.
-        It is the equivalent of noise intensity found in other motion models. We
-        keep the internal name as sigma but, for consistency of interface, we also
-        expose is as noise_intensity.
+        It is the equivalent of noise intensity found in other motion models.
 
         Args:
             tau (float): target maneuver time constant
             sigma (float): target maneuver standard deviation
+            noise_intensity (float): for compatibility with other motion models,
+                instead of `sigma` one can specify `noise_intensity = sigma ** 2`
         """
-        self.tau = tau
-        self.sigma = sigma
         self.state_dim = 9
-    
-    @property
-    def name(self):
-        """Motion model name"""
-        return f"singer_{self.tau}_{self.sigma}"
+        self.tau = tau
+
+        # exactly one of these two needs to be defined
+        if not ((sigma is None) ^ (noise_intensity is None)):
+            raise Exception("Provide exactly one alternative: sigma or noise_intensity")
+
+        if sigma is not None:
+            self.noise_intensity = sigma ** 2
+        else:
+            self.noise_intensity = noise_intensity
+            sigma = round(np.sqrt(noise_intensity), 3)
+
+        self.name = f"singer_{self.tau}_{sigma}"
     
     def F(self, dt):
         beta = 1/self.tau
@@ -81,16 +91,4 @@ class SingerAccelerationModel:
                          [q_31, 0, 0, q_32, 0, 0, q_33, 0, 0],
                          [0, q_31, 0, 0, q_32, 0, 0, q_33, 0],
                          [0, 0, q_31, 0, 0, q_32, 0, 0, q_33]]) \
-                * 2 * self.sigma**2 / self.tau
-
-
-def singer_acceleration_models(*args) -> List[SingerAccelerationModel]:
-    """Create Singer acceleration models.
-
-    Args:
-        args (List[Tuple[float, float]]): A list of (tau, sigma) tuples.
-
-    Returns:
-        List[SingerAccelerationModel]: List of Singer Acceleration Model objects.
-    """
-    return [SingerAccelerationModel(tau, sigma) for tau, sigma in args]
+                * 2 * self.noise_intensity / self.tau

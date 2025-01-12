@@ -11,6 +11,8 @@ __all__ = ['SingerTarget']
 
 class SingerTarget(Target):
     """Generates sample target trajectory using the Singer Acceleration Model.
+
+    Defined in "Design and Analysis of Modern Tracking Systems", pp. 200-203.
     """
 
     def __init__(self, tau: float, sigma: float, T: float = 1, seed: Optional[float] = None):
@@ -19,7 +21,7 @@ class SingerTarget(Target):
         Args:
             tau (float): target maneuver time constant
             sigma (float): target maneuver standard deviation
-            T (float, optional): Sampling time. Defaults to 1.
+            T (float, optional): Sampling interval. Defaults to 1.
         """        
         self.tau = tau
         self.sigma = sigma
@@ -32,8 +34,8 @@ class SingerTarget(Target):
             self.name = f"singer_{self.tau}_{self.sigma}_{self.seed}"
 
 
-    def true_states(self, T: Union[float, ArrayLike] = 1, n: int = 400, seed: float = 0) -> np.ndarray:
-        if self.seed is not None:
+    def true_states(self, T: Union[float, ArrayLike] = 1, n: int = 400, seed: float = None) -> np.ndarray:
+        if seed is None:
             seed = self.seed
         
         if isinstance(T, (int, float)):
@@ -52,10 +54,10 @@ class SingerTarget(Target):
                dims[0][:,1], dims[1][:,1], dims[2][:,1],
                dims[0][:,2], dims[1][:,2], dims[2][:,2]]
         
-        return (np.array(ret).T)[:,:3]
+        return (np.array(ret).T)
 
 
-def _acceleration(tau, sigma, T, n=100, rnd=None):
+def _acceleration(tau, sigma, T, n=400, rnd=None):
     normal = np.random.normal if rnd is None else rnd.normal
     rho = np.exp(-T / tau)
     res = []
