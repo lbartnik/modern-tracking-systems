@@ -202,11 +202,8 @@ class CoordinatedTurn(KalmanFilter):
 
         self.Q_base = np.diag(Q_sigmas) ** 2
 
-        self.x_hat = np.zeros((7, 1))
-        self.P_hat = np.diag([Q_sigmas[0], Q_sigmas[0],
-                              Q_sigmas[1], Q_sigmas[1],
-                              Q_sigmas[2], Q_sigmas[2],
-                              Q_sigmas[3]])
+        self.x_hat, self.P_hat = None, None
+        self.reset()
         
         self.H = np.array([[1, 0, 0, 0, 0, 0, 0],
                            [0, 1, 0, 0, 0, 0, 0],
@@ -217,6 +214,12 @@ class CoordinatedTurn(KalmanFilter):
 
         # clamp Omega to +/- this value
         self.max_omega = 0.25 * np.pi/180
+    
+    def reset(self):
+        self.x_hat = np.zeros((7, 1))
+        self.P_hat = np.diag([self.Q_base[0,0], self.Q_base[1,1], self.Q_base[2,2],
+                              self.Q_base[0,0], self.Q_base[1,1], self.Q_base[2,2],
+                              self.Q_base[3,3]])
 
     def f(self, dt: float) -> np.ndarray:
         # state prediction matrix, eq. 11.7.1-4, p. 468

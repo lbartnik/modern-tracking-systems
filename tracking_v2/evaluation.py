@@ -29,15 +29,6 @@ class Runner:
 
         self.dim = 3
 
-    def before_many(self):
-        self.many_x_hat = []
-        self.many_P_hat = []
-        self.many_truth = []
-
-    def before_one(self):
-        self.one_x_hat = []
-        self.one_P_hat = []
-
     def after_predict(self):
         self.one_x_hat.append(np.copy(self.kf.x_hat))
         self.one_P_hat.append(np.copy(self.kf.P_hat))
@@ -47,6 +38,10 @@ class Runner:
 
     def after_update(self, m):
         pass
+
+    def before_one(self):
+        self.one_x_hat = []
+        self.one_P_hat = []
 
     def after_one(self):
         self.one_x_hat = np.array(self.one_x_hat)
@@ -60,6 +55,11 @@ class Runner:
         
         self.one_truth = np.copy(self.truth)
         self.many_truth.append(self.one_truth)
+
+    def before_many(self):
+        self.many_x_hat = []
+        self.many_P_hat = []
+        self.many_truth = []
 
     def after_many(self):
         self.many_x_hat = np.array(self.many_x_hat)

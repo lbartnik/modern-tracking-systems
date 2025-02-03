@@ -251,7 +251,7 @@ class InteractingMultipleModels(object):
         for f in self.filters:
             S_inv = np.linalg.inv(f.S)
             d2 = (f.innovation.T @ S_inv @ f.innovation).squeeze()
-            gamma_i = np.exp(-d2/2) / np.sqrt( (2*np.pi)**M * np.trace(f.S))
+            gamma_i = np.exp(-d2/2) / np.sqrt( (2*np.pi)**M * np.linalg.det(f.S))
             gamma.append(gamma_i)
         
         # update probabilities of models using Bayes rule, equation (4.55)
