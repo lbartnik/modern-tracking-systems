@@ -42,8 +42,8 @@ class SubFigure:
 
 
 
-def to_df(array: ArrayLike, col_prefix='x', columns=None, additional_columns: Dict = None):
-    array = np.array(array)
+def to_df(array: ArrayLike, col_prefix='x', columns=None, additional_columns: Dict = None, add_time: bool = False):
+    array = np.asarray(array)
 
     if len(array.shape) == 1:
         array = np.reshape(array, (len(array), 1))
@@ -55,7 +55,10 @@ def to_df(array: ArrayLike, col_prefix='x', columns=None, additional_columns: Di
         columns = [col_prefix + str(i) for i in range(array.shape[-1])]
 
     d = {}
-    for column, name in zip(np.array(array).T, columns):
+    if add_time:
+        d['t'] = np.arange(0, array.shape[0])
+
+    for column, name in zip(array.T, columns):
         d[name] = column
     
     if additional_columns is not None:
