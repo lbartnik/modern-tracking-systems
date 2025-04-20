@@ -80,11 +80,18 @@ def _populate_coordinates(pos: ArrayLike, heading: float, commands: List[Union[S
                 heading -= turn
                 command.alpha1 = heading + np.pi/2
 
+                if command.alpha1 < 0:
+                    a1 = np.remainder(command.alpha1, 2*np.pi)
+                    command.alpha0 = a1 - (command.alpha1 - command.alpha0)
+                    command.alpha1 = a1
+
             pos = command.center + np.asarray([np.cos(command.alpha1), np.sin(command.alpha1), 0]) * command.radius_m
 
         else:
             raise Exception("Unsupported command")
         
+        heading = np.remainder(heading, 2*np.pi)
+
     return commands
 
 
@@ -282,6 +289,8 @@ class AutopilotTarget(Target):
             T = 1 # TODO better take the most frequent value in np.diff(time)
             time = np.array(T)
         
+        for c in self.commands:
+            c.progress = 0
 
         rnd = np.random.default_rng(seed=seed)
         dt = T / self.integration_steps_count
@@ -298,8 +307,7 @@ class AutopilotTarget(Target):
 
             segment = self.commands[segment_index]
             
-            progress, path_pos, next_target = _project_on_segment(mover.position, segment, np.linalg.norm(mover.velocity) * T)
-            segment.progress = max(segment.progress, progress)
+            path_pos, next_target = _project_on_segment(mover.position, segment, np.linalg.norm(mover.velocity) * T)
 
             if segment.progress >= 1:
                 segment_index += 1
@@ -351,16 +359,15 @@ def _project_on_segment(position: ArrayLike, segment: Union[Straight, Turn], del
         if direction[1] < 0:
             alpha = -alpha
 
-        # TODO normalize by 2*pi but shift the [a0, a1] interval such that
-        #      its mid-point is in x=pi
+        previous_alpha = segment.alpha0 + segment.progress * (segment.alpha1 - segment.alpha0)
+        delta = np.remainder(alpha - previous_alpha + np.pi, 2*np.pi) - np.pi
 
-        s = alpha / (2 * np.pi)
-        s0, s1 = np.sort([segment.alpha0, segment.alpha1]) / (2 * np.pi)
-        s = np.clip(s, s0, s1)
+        if segment.left and delta > 0 or not segment.left and delta < 0:
+            alpha = previous_alpha + delta
+        else:
+            alpha = previous_alpha
 
-        alpha = s * 2 * np.pi
         p = segment.center + _heading_to_rotation(alpha) @ np.array([segment.radius_m, 0, 0])
-
         t = (alpha - segment.alpha0) / (segment.alpha1 - segment.alpha0)
 
         # the next point for the mover to aim at
@@ -370,7 +377,8 @@ def _project_on_segment(position: ArrayLike, segment: Union[Straight, Turn], del
         
         q = segment.center + _heading_to_rotation(alpha + beta) @ np.array([segment.radius_m, 0, 0])
 
-    return t, p, q
+    segment.progress = t
+    return p, q
 
 
 
