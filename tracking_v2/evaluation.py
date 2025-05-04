@@ -47,8 +47,8 @@ class Runner:
         self.one_x_hat = np.array(self.one_x_hat)
         self.one_P_hat = np.array(self.one_P_hat)
 
-        assert self.one_x_hat.shape[0] == self.n
-        assert self.one_P_hat.shape[0] == self.n
+        assert self.one_x_hat.shape[0] == self.n, f"{self.one_x_hat.shape[0]} != {self.n}"
+        assert self.one_P_hat.shape[0] == self.n, f"{self.one_P_hat.shape[0]} != {self.n}"
 
         self.many_x_hat.append(self.one_x_hat)
         self.many_P_hat.append(self.one_P_hat)
@@ -234,11 +234,21 @@ def evaluate_nees(x_hat, P_hat, truth):
     dim   = truth.shape[-1]
     
     if len(truth.shape) == 2:
+        assert truth.shape[0] == x_hat.shape[1]
+        assert truth.shape[1] == x_hat.shape[2]
         truth = truth.reshape((1, truth.shape[0], truth.shape[1], 1))
+
     elif len(truth.shape) == 3:
         if truth.shape[-1] == 1:
+            assert truth.shape[0] == x_hat.shape[1]
+            assert truth.shape[1] == x_hat.shape[2]
+            assert truth.shape[2] == x_hat.shape[3]
             truth = truth.reshape((1, truth.shape[0], truth.shape[1], truth.shape[2]))
+
         else:
+            assert truth.shape[0] == x_hat.shape[0] or truth.shape[0] == 1 
+            assert truth.shape[1] == x_hat.shape[1]
+            assert truth.shape[2] == x_hat.shape[2]
             truth = truth.reshape((truth.shape[0], truth.shape[1], truth.shape[2], 1))
     
     diff  = x_hat - truth

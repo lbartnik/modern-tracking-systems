@@ -303,15 +303,17 @@ class AutopilotTarget(Target):
         trace = []
         for _ in time:
             if segment_index == len(self.commands):
+                print("end of the line")
                 break
 
             segment = self.commands[segment_index]
             
             path_pos, next_target = _project_on_segment(mover.position, segment, np.linalg.norm(mover.velocity) * T)
 
+            # if segment completed, move to the next segment and append another trace point
             if segment.progress >= 1:
                 segment_index += 1
-                continue
+                path_pos, next_target = _project_on_segment(mover.position, segment, np.linalg.norm(mover.velocity) * T)
 
             if debug:
                 trace.append(np.concatenate(([segment_index, segment.progress], mover.position, path_pos, mover.position - path_pos, mover.velocity)))
@@ -321,8 +323,11 @@ class AutopilotTarget(Target):
 
             for _ in range(self.integration_steps_count):
                 waypoint_reached = mover.update(dt, next_target, rnd)
+                
+                # if past the waypoint, continue movement in the last established direction
+                # (1000 * T * velocity) defines a range beyond reach of a single time step T
                 if waypoint_reached:
-                    break # TODO approximation: should continue movement in the last established direction
+                    next_target = next_target + mover.velocity * (1000 * T)
 
             # TODO check if reached the end of the path                    
 
@@ -483,75 +488,3 @@ class ForceWaypointMover:
             return True
         
         return False
-
-
-
-
-# --- old code ---
-
-
-
-
-
-
-
-
-
-def _project(p, l0, l1):
-    p, l0, l1 = np.asarray(p), np.asarray(l0), np.asarray(l1)
-    line = l1 - l0
-    
-    np_dot_line = np.dot(line, line)
-    if np_dot_line == 0:
-        return l0
-
-    # L = dot(p-l0, line) / np.linarg.norm(line) is the length of the projection of p-l0 onto line
-    # X = line / np.linarg(line) is the direction unit vector of line
-    # P = l0 + X*L is the projection of point 'p' onto line
-    # norm used twice is collapsed into dot(line, line)
-    return l0 + np.dot(p - l0, line) / np_dot_line * line
-
-
-
-
-
-def _generate_waypoints(commands: List[Union[Straight, Turn]]):
-    current_wp = np.array([0, 0, 0])
-    current_heading = 0
-
-    waypoints = [current_wp]
-    
-    for command in commands:
-        if isinstance(command, Straight):
-            current_wp = current_wp + np.array([command.distance_m, 0, 0]) @ _heading_to_rotation(current_heading)
-            waypoints.append(current_wp)
-        
-        elif isinstance(command, Turn):
-            if command.left:
-                center = current_wp + np.array([command.radius_m, 0, 0]) @ _heading_to_rotation(current_heading - np.pi/2)
-                alpha  = current_heading - np.pi/2 + np.arange(0, command.turn_deg / 180.0 * np.pi, 0.1)
-                heading_change = command.turn_deg / 180.0 * np.pi
-            else:
-                center = current_wp + np.array([command.radius_m, 0, 0]) @ _heading_to_rotation(current_heading + np.pi/2)
-                alpha  = current_heading + np.pi/2 - np.arange(0, command.turn_deg / 180.0 * np.pi, 0.1)
-                heading_change = -command.turn_deg / 180.0 * np.pi
-            
-            turn_wps = np.array((command.radius_m * np.cos(alpha),
-                                 command.radius_m * np.sin(alpha),
-                                 np.zeros_like(alpha))).T
-            turn_wps += center
-            waypoints.extend(list(turn_wps))
-
-            current_wp = waypoints[-1]
-            current_heading += heading_change
-
-        else:
-            raise Exception("Unsupported command")
-    
-    return waypoints
-
-
-
-
-
-
