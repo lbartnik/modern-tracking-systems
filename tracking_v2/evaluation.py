@@ -26,6 +26,9 @@ class Runner:
         self.one_x_hat, self.one_P_hat = [], []
         self.many_x_hat, self.many_P_hat = [], []
         self.one_truth, self.many_truth = [], []
+        # innovation and its covariance
+        self.one_v, self.one_S = [], []
+        self.many_v, self.many_S = [], []
 
         self.dim = 3
 
@@ -37,11 +40,14 @@ class Runner:
         pass
 
     def after_update(self, m):
-        pass
+        self.one_v.append(np.copy(self.kf.innovation))
+        self.one_S.append(np.copy(self.kf.S))
 
     def before_one(self):
         self.one_x_hat = []
         self.one_P_hat = []
+        self.one_v = []
+        self.one_S = []
 
     def after_one(self):
         self.one_x_hat = np.array(self.one_x_hat)
@@ -52,7 +58,16 @@ class Runner:
 
         self.many_x_hat.append(self.one_x_hat)
         self.many_P_hat.append(self.one_P_hat)
-        
+
+        self.one_v = np.array(self.one_v)
+        self.one_S = np.array(self.one_S)
+
+        assert self.one_v.shape[0] == self.n, f"{self.one_v.shape[0]} != {self.n}"
+        assert self.one_S.shape[0] == self.n, f"{self.one_S.shape[0]} != {self.n}"
+
+        self.many_v.append(self.one_v)
+        self.many_S.append(self.one_S)
+
         self.one_truth = np.copy(self.truth)
         self.many_truth.append(self.one_truth)
 
@@ -60,15 +75,21 @@ class Runner:
         self.many_x_hat = []
         self.many_P_hat = []
         self.many_truth = []
+        self.many_v = []
+        self.many_S = []
 
     def after_many(self):
         self.many_x_hat = np.array(self.many_x_hat)
         self.many_P_hat = np.array(self.many_P_hat)
         self.many_truth = np.array(self.many_truth)
+        self.many_v = np.array(self.many_v)
+        self.many_S = np.array(self.many_S)
 
         assert self.many_x_hat.shape[0] == self.m
         assert self.many_P_hat.shape[0] == self.m
         assert self.many_truth.shape[0] == self.m
+        assert self.many_v.shape[0] == self.m
+        assert self.many_S.shape[0] == self.m
 
 
 
