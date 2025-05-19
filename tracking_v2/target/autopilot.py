@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from copy import deepcopy
 
 from .target import Target
+from ..util import to_df, display
 
 
 __all__ = ['AutopilotTarget', 'Straight', 'Turn']
@@ -247,7 +248,6 @@ def _plot_path(commands: List[Union[Straight, Turn]], position: ArrayLike = None
         fig.add_trace(go.Scatter(x=[q[0]], y=[q[1]], mode='markers', name='next position'))
 
     fig.update_layout(height=700)
-
     return fig
 
 
@@ -293,15 +293,14 @@ class AutopilotTarget(Target):
             c.progress = 0
 
         rnd = np.random.default_rng(seed=seed)
-        dt = T / self.integration_steps_count
         mover = ForceWaypointMover(self.initial_position, [1, 0, 0], self.mass_kg, self.thrust_N,
                                    self.drag_coefficient, self.max_turn_rate_deg_s,
-                                   np.sqrt(self.noise_intensity * dt))
+                                   self.noise_intensity)
 
         segment_index = 0
 
         trace = []
-        for _ in time:
+        for t in time:
             if segment_index == len(self.commands):
                 print("end of the line")
                 break
@@ -316,22 +315,21 @@ class AutopilotTarget(Target):
                 path_pos, next_target = _project_on_segment(mover.position, segment, np.linalg.norm(mover.velocity) * T)
 
             if debug:
-                trace.append(np.concatenate(([segment_index, segment.progress], mover.position, path_pos, mover.position - path_pos, mover.velocity)))
+                trace.append(np.concatenate(([t, segment_index, segment.progress], mover.position, path_pos, mover.position - path_pos, mover.velocity)))
             else:
                 trace.append(np.concatenate((mover.position, mover.velocity)))
 
-
-            for _ in range(self.integration_steps_count):
-                waypoint_reached = mover.update(dt, next_target, rnd)
-                
-                # if past the waypoint, continue movement in the last established direction
-                # (1000 * T * velocity) defines a range beyond reach of a single time step T
-                if waypoint_reached:
-                    next_target = next_target + mover.velocity * (1000 * T)
+            mover.turn(T, next_target)
+            mover.update(T, self.integration_steps_count, rnd)
 
             # TODO check if reached the end of the path                    
 
-        return np.asarray(trace)
+        if debug:
+            return to_df(np.asarray(trace), columns=['time', 'segment', 'progress',
+                                                     'mx', 'my', 'mz', 'px', 'py', 'pz',
+                                                     'dx', 'dy', 'dz', 'vx', 'vy', 'vz'])
+        else:
+            return np.asarray(trace)
 
 
 
@@ -354,25 +352,25 @@ def _project_on_segment(position: ArrayLike, segment: Union[Straight, Turn], del
         # ignore difference in altitude
         direction = position - segment.center
         direction[2] = 0
+        direction /= np.linalg.norm(direction)
 
         # find the angle alpha on the arc closest to the current position of the mover
-        cos_alpha = np.dot(direction, np.array([1, 0, 0])) / np.linalg.norm(direction)
-        alpha = np.arccos(cos_alpha)
+        alpha = np.atan2(direction[1], direction[0]) 
 
-        # if displacement in Y is negative, change the direction of rotation; this
-        # is because arccos is symmetrical and maps [-1, 1] -> [0, 180]
-        if direction[1] < 0:
-            alpha = -alpha
-
+        # where were we before this update?
         previous_alpha = segment.alpha0 + segment.progress * (segment.alpha1 - segment.alpha0)
+
+        # where does this update move us?
         delta = np.remainder(alpha - previous_alpha + np.pi, 2*np.pi) - np.pi
 
+        # if delta moves us ahead along the arc, advance
         if segment.left and delta > 0 or not segment.left and delta < 0:
             alpha = previous_alpha + delta
+        # otherwise, discard this time step and wait until an update which advances the mover
         else:
             alpha = previous_alpha
 
-        p = segment.center + _heading_to_rotation(alpha) @ np.array([segment.radius_m, 0, 0])
+        p = segment.center + direction * segment.radius_m
         t = (alpha - segment.alpha0) / (segment.alpha1 - segment.alpha0)
 
         # the next point for the mover to aim at
@@ -383,6 +381,7 @@ def _project_on_segment(position: ArrayLike, segment: Union[Straight, Turn], del
         q = segment.center + _heading_to_rotation(alpha + beta) @ np.array([segment.radius_m, 0, 0])
 
     segment.progress = t
+    # current position on the path, next (target) position on the path
     return p, q
 
 
@@ -412,7 +411,7 @@ class ForceWaypointMover:
 
         self.cos_theta = None
                 
-    def update(self, dt: float, target: ArrayLike, rnd: np.random.Generator = np.random):
+    def turn(self, dt: float, target: ArrayLike):
         """
         Update the vehicle's position and velocity for one time step.
 
@@ -439,7 +438,6 @@ class ForceWaypointMover:
 
         if theta < self.max_turn_rate * dt:
             self.velocity = direction_to_target * velocity_norm
-            velocity_direction = direction_to_target
         
         else:
             theta = self.max_turn_rate * dt
@@ -449,26 +447,41 @@ class ForceWaypointMover:
             self.velocity = self.velocity * cos_theta + np.cross(axis, self.velocity) * np.sin(theta) + \
                             axis * np.dot(axis, self.velocity) * (1 - cos_theta)
 
+
+    def update(self, dt: float, integration_steps: int = 20, rnd: np.random.Generator = np.random):
+        """
+        Update the vehicle's position and velocity for one time step.
+
+        :param dt: Time step in seconds
+        :param requested_heading: Desired heading as a unit vector (x, y, z)
+        :param randomness_scale: Scale for random acceleration, affects how much the velocity changes randomly
+        """
+
+        dt = dt / integration_steps
+        sigma = np.sqrt(self.noise_intensity * dt)
+
+        for _ in range(integration_steps):
+            velocity_norm = np.linalg.norm(self.velocity)
             velocity_direction = self.velocity / velocity_norm
 
+            # Calculate drag force
+            drag_force = -0.5 * self.drag_coefficient * velocity_norm * self.velocity
+            
+            # Random acceleration (normally distributed)
+            random_acceleration = rnd.normal(0, sigma, 3)
+            
+            # Net acceleration
+            net_acceleration = (self.thrust_force * velocity_direction / self.mass + 
+                                drag_force / self.mass + 
+                                random_acceleration)
+            
+            # Update velocity, trying to move towards the target
+            self.velocity += net_acceleration * dt
 
-        # Calculate drag force
-        drag_force = -0.5 * self.drag_coefficient * velocity_norm * self.velocity
+            # Update position
+            self.position += self.velocity * dt
         
-        # Random acceleration (normally distributed)
-        random_acceleration = rnd.normal(0, self.noise_intensity, 3)
-        
-        # Net acceleration
-        net_acceleration = (self.thrust_force * velocity_direction / self.mass + 
-                            drag_force / self.mass + 
-                            random_acceleration)
-        
-        # Update velocity, trying to move towards the target
-        self.velocity += net_acceleration * dt
-
-        # Update position
-        self.position += self.velocity * dt
-        
+    def is_target_reached(self, target: ArrayLike) -> bool:
         # the normal vector for the plane which defines the end of this leg
         waypoint_plane_normal = target - self.previous_waypoint
         waypoint_plane_normal_norm = np.linalg.norm(waypoint_plane_normal)

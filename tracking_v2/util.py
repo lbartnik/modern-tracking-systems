@@ -98,8 +98,7 @@ class DisplayProcessor:
 
     def __call__(self, fig, as_png: bool = None):
         if (as_png is not None and not as_png) or not self.as_png:
-            ipython.display(fig)
-            return
+            return fig
         
         path = self._pattern.format(count = self._count)
         self._count += 1

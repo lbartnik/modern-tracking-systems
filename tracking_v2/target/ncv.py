@@ -47,6 +47,7 @@ class NearConstantVelocityTarget(Target):
         self.spatial_dim = 3
         self.initial_position = np.array(initial_position)
         self.seed = seed
+        self.rng = np.random.default_rng(seed=self.seed)
 
         assert noise_intensity >= 0
         self.noise_intensity = noise_intensity
@@ -83,8 +84,6 @@ class NearConstantVelocityTarget(Target):
             tm = np.array(T)
             T  = 1 # TODO better would be to use the most frequent value of np.diff(T)
 
-        rng = np.random.default_rng(seed=self.seed)
-
         # time is absolute and always starts at zero; this is so that elsewhere target
         # positions can be queried starting at arbitrary timestamp and yet return
         # values consistent across multiple trackers
@@ -93,7 +92,7 @@ class NearConstantVelocityTarget(Target):
                 dt = T / self.integration_steps_count
                 sigma = np.sqrt(self.noise_intensity * dt)
                 for _ in range(self.integration_steps_count):
-                    vel += rng.normal(0, sigma, 3)
+                    vel += self.rng.normal(0, sigma, 3)
                     current_pos = current_pos + vel * dt
             else:
                 current_pos = current_pos + vel * dt
