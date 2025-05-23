@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.testing import assert_equal, assert_allclose
+from copy import deepcopy
 
 from tracking_v2.kalman.linear import LinearKalmanFilter
 from tracking_v2.motion import ConstantVelocityModel
@@ -103,3 +104,30 @@ def test_nees():
     assert np.mean(average_nees_scores[75:] < critical_region_lower) <= 0.025
     assert np.mean(average_nees_scores[75:] > critical_region_upper) <= 0.025
 
+
+def test_predict():
+    kf1 = LinearKalmanFilter(ConstantVelocityModel(1), [[1, 0, 0, 0, 0, 0],
+                                                        [0, 1, 0, 0, 0, 0],
+                                                        [0, 0, 1, 0, 0, 0]])
+    kf1.x_hat[3,0] = 10
+    kf1.x_hat[4,0] = 5
+
+    kf2 = deepcopy(kf1)
+
+    kf1.predict(2)
+    kf1.predict(3)
+
+    kf2.predict(5)
+
+    assert_allclose(kf1.x_hat-kf2.x_hat, np.zeros((6, 1)), rtol=.1)
+    assert_allclose(kf1.P_hat-kf2.P_hat, np.zeros((6, 6)), rtol=.1)
+
+    assert_allclose(kf1.x_hat, np.array([[50, 25, 0, 10, 5, 0]]).T, rtol=.1)
+    assert_allclose(kf1.P_hat, np.array([
+       [ 67.66,     0,     0, 17.5,    0,    0],
+       [     0, 67.66,     0,    0, 17.5,    0],
+       [     0,     0, 67.66,    0,    0, 17.5],
+       [  17.5,     0,     0,    6,    0,    0],
+       [     0,  17.5,     0,    0,    6,    0],
+       [     0,     0,  17.5,    0,    0,    6]
+    ]), rtol=.1)

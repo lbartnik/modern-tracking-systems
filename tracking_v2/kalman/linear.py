@@ -36,6 +36,7 @@ class LinearKalmanFilter(KalmanFilter):
 
         self.innovation = None
         self.S = None
+        self.update_prepared = False
 
     def initialize(self, x: ArrayLike, P: ArrayLike):
         """Initialize the Kalman Filter state. If `x` has N elements, the shape of `P` must
@@ -75,8 +76,8 @@ class LinearKalmanFilter(KalmanFilter):
         self.x_hat = F @ self.x_hat
         self.P_hat = F @ self.P_hat @ F.T + Q
 
-    # update state with a measurement
-    def update(self, z: ArrayLike, R: ArrayLike):
+    # prepare state to be updated with a measurement
+    def prepare_update(self, z: ArrayLike, R: ArrayLike):
         """Update the Kalman Filter state with a measurement.
 
         Args:
@@ -92,23 +93,31 @@ class LinearKalmanFilter(KalmanFilter):
 
         # innovation covariance
         # S = H*P*H + R
-        S = self.H @ self.P_hat @ self.H.T + R
+        self.S = self.H @ self.P_hat @ self.H.T + R
+
+        self.innovation = as_column(z) - self.H @ self.x_hat
+
+        self.update_prepared = True
+
+    def update(self):
+        """Update the Kalman Filter state using innovation and its covariance calculated
+        in prepare_update().
+        """
+        assert self.update_prepared, "prepare_update() not called"
 
         # Kalman gain
         # K = P*H (H*P*H + R)^-1
-        K = self.P_hat @ self.H.T @ np.linalg.inv(S)
-
-        innovation = as_column(z) - self.H @ self.x_hat
+        K = self.P_hat @ self.H.T @ np.linalg.inv(self.S)
 
         # filtered state (mean)
         # X = X + K(z - H*X)
-        x = self.x_hat + K @ innovation
+        x = self.x_hat + K @ self.innovation
         
         # filtered state (covariance)
         # P = P - K*S*K
-        P = self.P_hat - K @ S @ K.T
+        P = self.P_hat - K @ self.S @ K.T
 
         self.x_hat = x
         self.P_hat = P
-        self.innovation = innovation
-        self.S = S
+
+        self.update_prepared = False

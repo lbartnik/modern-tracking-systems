@@ -9,7 +9,7 @@ __all__ = ['SingleTurnTarget', 'SinusTarget']
 
 def _time_array(T: Union[float, ArrayLike], n: int) -> np.ndarray:
     if isinstance(T, (int, float)):
-        return np.arange(0, n, T)
+        return np.arange(0, n) * T
     else:
         return np.array(T)
 

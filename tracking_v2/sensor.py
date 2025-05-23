@@ -32,6 +32,9 @@ class GeometricSensor:
     
     def reset_seed(self, seed: int = 12345):
         self.rng = np.random.default_rng(seed=seed)
+    
+    def reset_rng(self, rng: np.random.Generator = None):
+        self.rng = rng
 
     def generate_measurement(self, t: float, position: np.ndarray) -> SensorMeasurement:
         position = np.array(position).squeeze()

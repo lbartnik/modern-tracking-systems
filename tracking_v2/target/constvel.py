@@ -47,7 +47,7 @@ class ConstantVelocityTarget(Target):
         vel = self.velocity * self.speed
 
         if isinstance(T, (int, float)):
-            tm = np.arange(0, n, T)
+            tm = np.arange(0, n) * T
         else:
             tm = np.array(T)
             T  = 1 # TODO better would be to use the most frequent value of np.diff(T)

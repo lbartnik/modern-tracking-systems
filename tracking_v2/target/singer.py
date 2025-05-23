@@ -39,7 +39,7 @@ class SingerTarget(Target):
             seed = self.seed
         
         if isinstance(T, (int, float)):
-            time = np.arange(0, n, T)
+            time = np.arange(0, n) * T
         else:
             T = 1 # TODO better take the most frequent value in np.diff(time)
             time = np.array(T)

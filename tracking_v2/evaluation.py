@@ -1,17 +1,19 @@
 import numpy as np
 import scipy as sp
 from numpy.typing import ArrayLike
-from typing import List, Tuple
+from typing import List
 import pandas as pd
+import inspect
 
 import plotly.express as ex
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .util import SubFigure, to_df, colorscale, display
+from .util import SubFigure, to_df, colorscale
 
 
-__all__ = ['Runner', 'run_one', 'run_many', 'evaluate_nees', 'evaluate_many', 'plot_nees', 'plot_error', 'plot_2d', 'plot_3d']
+__all__ = ['Runner', 'run_one', 'run_many', 'before_one', 'after_one', 'before_many', 'after_many',
+           'after_update', 'evaluate_nees', 'evaluate_many', 'plot_nscore', 'plot_error', 'plot_2d', 'plot_3d']
 
 
 
@@ -46,11 +48,15 @@ class Runner:
         self.one_v.append(np.copy(self.kf.innovation))
         self.one_S.append(np.copy(self.kf.S))
 
+        self.__execute_user_callbacks('after_update', m)
+
     def before_one(self):
         self.one_x_hat = []
         self.one_P_hat = []
         self.one_v = []
         self.one_S = []
+
+        self.__execute_user_callbacks('before_one')
 
     def after_one(self):
         self.one_x_hat = np.array(self.one_x_hat)
@@ -74,12 +80,16 @@ class Runner:
         self.one_truth = np.copy(self.truth)
         self.many_truth.append(self.one_truth)
 
+        self.__execute_user_callbacks('after_one')
+
     def before_many(self):
         self.many_x_hat = []
         self.many_P_hat = []
         self.many_truth = []
         self.many_v = []
         self.many_S = []
+
+        self.__execute_user_callbacks('before_many')
 
     def after_many(self):
         self.many_x_hat = np.array(self.many_x_hat)
@@ -94,10 +104,15 @@ class Runner:
         assert self.many_v.shape[0] == self.m
         assert self.many_S.shape[0] == self.m
 
+        self.__execute_user_callbacks('after_many')
+
+    def __execute_user_callbacks(self, stage, *args):
+        for name, member in inspect.getmembers(self, inspect.ismethod):
+            if hasattr(member, 'runner_callback') and member.runner_callback == stage:
+                member(*args)
 
 
-    def run_one(self, n):
-        T = 1
+    def run_one(self, n: int, T: float = 1):
         t = 0
         self.n = n
         
@@ -105,6 +120,8 @@ class Runner:
         self.truth = self.target.true_states(T, n+1)
         
         m = self.sensor.generate_measurement(t, self.truth[0, :self.dim])
+
+        self.kf.reset()
         self.kf.initialize(m.z, m.R)
 
         self.after_initialize()
@@ -117,7 +134,8 @@ class Runner:
             self.after_predict()
 
             m = self.sensor.generate_measurement(t, position)
-            self.kf.update(m.z, m.R)
+            self.kf.prepare_update(m.z, m.R)
+            self.kf.update()
 
             self.after_update(m)
 
@@ -125,7 +143,7 @@ class Runner:
 
 
 
-    def run_many(self, m, n, seeds=None):
+    def run_many(self, m: int, n: int, T: float = 1, seeds=None):
         if seeds is None:
             seeds = np.arange(m)
         assert m == len(seeds)
@@ -136,12 +154,12 @@ class Runner:
 
         self.before_many()
         for seed in seeds:
-            self.sensor.reset_seed(seed)
-            self.kf.reset()
+            rng = np.random.default_rng(seed=seed)
+            self.sensor.reset_rng(rng)
+            self.target.reset_rng(rng)
 
-            self.run_one(n)
+            self.run_one(n, T)
         
-        self.kf.reset()
         self.after_many()
 
 
@@ -157,7 +175,29 @@ def run_many(m, n, target, sensor, kf, seeds=None):
     return runner.many_x_hat, runner.many_P_hat, runner.truth[1:,:]
 
 
+def before_one(method):
+    method.runner_callback = 'before_one'
+    return method
 
+
+def after_one(method):
+    method.runner_callback = 'after_one'
+    return method
+
+
+def before_many(method):
+    method.runner_callback = 'before_many'
+    return method
+
+
+def after_many(method):
+    method.runner_callback = 'after_many'
+    return method
+
+
+def after_update(method):
+    method.runner_callback = 'after_update'
+    return method
 
 
 
@@ -173,7 +213,7 @@ def plot_error(runner, skip=0, run=0):
     fig = ex.line(df, x='time', y='error', facet_row='dim')
     fig.update_yaxes(matches=None)
 
-    return display(fig)
+    return fig
 
 
 
@@ -206,7 +246,7 @@ def plot_2d(runner, skip=0, run=0, residual=False):
         yaxis3=dict(title=dict(text='z')),
     )
 
-    return display(fig)
+    return fig
 
 
 
@@ -231,7 +271,7 @@ def plot_3d(runner, skip=0, run=0):
                                    size=.1
                                )))
 
-    return display(fig)
+    return fig
 
 
 
@@ -464,7 +504,7 @@ def plot_nscore(score: NScoreEvaluationResult, skip: int=25) -> go.Figure:
     h2.add_annotation(text=f"{round(upper*100, 2)}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
 
     fig.update_layout(height=700)    
-    return display(fig)
+    return fig
 
 
 def plot_runs(nees: NScoreEvaluationResult, n: int=None, skip: int=25) -> go.Figure:
@@ -486,7 +526,7 @@ def plot_runs(nees: NScoreEvaluationResult, n: int=None, skip: int=25) -> go.Fig
         #fig.add_trace(go.Scatter(x=x, y=scores[i,:],  name=f'run {i}', mode='markers', marker=dict(size=0.5)))
         fig.add_trace(go.Scatter(x=x, y=scores[i,:],  name=f'run {i}', mode='lines', line=dict(width=.4), opacity=0.5))
 
-    return display(fig)
+    return fig
 
 
 class Tagged:
@@ -528,4 +568,4 @@ def plot_error_vs_nees(*tagged: List[Tagged], x: str = None, facet_row: str = No
     data = data.melt(id_vars, ['nees', 'err'], 'metric', 'value')
 
     fig = ex.box(data, x=x, y='value', color='metric', facet_row=facet_row)
-    return display(fig)
+    return fig

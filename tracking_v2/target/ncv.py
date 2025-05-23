@@ -46,8 +46,7 @@ class NearConstantVelocityTarget(Target):
         self.velocity = np.array([1, 0, 0]) # velocity direction, unit vector
         self.spatial_dim = 3
         self.initial_position = np.array(initial_position)
-        self.seed = seed
-        self.rng = np.random.default_rng(seed=self.seed)
+        self.reset_seed(seed)
 
         assert noise_intensity >= 0
         self.noise_intensity = noise_intensity
@@ -55,6 +54,14 @@ class NearConstantVelocityTarget(Target):
 
         assert report in ['position', 'position+velocity']
         self.report = report
+    
+    def reset_seed(self, seed: int = 0):
+        self.seed = seed
+        self.rng = np.random.default_rng(seed=self.seed)
+
+    def reset_rng(self, rng: np.random.Generator):
+        self.seed = None
+        self.rng = rng
 
     @property
     def name(self):
@@ -79,7 +86,7 @@ class NearConstantVelocityTarget(Target):
         vel = self.velocity * self.speed
 
         if isinstance(T, (int, float)):
-            tm = np.arange(0, n, T)
+            tm = np.arange(0, n) * T
         else:
             tm = np.array(T)
             T  = 1 # TODO better would be to use the most frequent value of np.diff(T)

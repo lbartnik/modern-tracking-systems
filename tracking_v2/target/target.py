@@ -30,5 +30,11 @@ class Target(object):
     def true_state(self, t: float) -> np.ndarray:
         return self.true_states()[t, :]
 
+    def reset_seed(self, seed: int = 0):
+        raise Exception(f"Target {self.__class__.__name__} does not implement reset_seed()")
+    
+    def reset_rng(self, rng: np.random.Generator = None):
+        raise Exception(f"Target {self.__class__.__name__} does not implement reset_rng()")
+
     def __repr__(self):
         return self.name
