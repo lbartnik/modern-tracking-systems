@@ -1,7 +1,10 @@
 import numpy as np
 import scipy as sp
 from typing import List
+from numpy.typing import ArrayLike
 import pandas as pd
+
+import datetime
 
 import plotly.express as ex
 import plotly.graph_objects as go
@@ -11,7 +14,7 @@ from .runner import NScoreEvaluationResult, Runner, evaluate_runner
 from ..util import SubFigure, to_df, colorscale
 
 
-__all__ = ['plot_nscore', 'plot_error', 'plot_2d', 'plot_3d']
+__all__ = ['plot_nscore', 'plot_error', 'plot_2d', 'plot_3d', 'plot_runs', 'plot_track']
 
 
 def plot_error(runner, skip=0, run=0):
@@ -225,3 +228,83 @@ def plot_error_vs_nees(*tagged: List[Tagged], x: str = None, facet_row: str = No
 
     fig = ex.box(data, x=x, y='value', color='metric', facet_row=facet_row)
     return fig
+
+
+class StoneSoupState:
+    def __init__(self, timestamp: int, mean: ArrayLike, cov: ArrayLike):
+        self.timestamp = timestamp
+        self.mean = mean
+        self.state_vector = mean
+        self.ndim = len(mean)
+        self.covar = cov
+
+class StoneSoupTrack:
+    def __init__(self, id: int, states: List):
+        self.id = id
+        self.states = states
+    
+    def __iter__(self):
+        return iter(self.states)
+
+    def __len__(self):
+        return len(self.states)
+        
+
+
+
+def plot_track(runner: Runner, m: int = 0, n: ArrayLike = None, gate: float = None) -> go.Figure:
+    start = datetime.datetime(year=1970, month=1, day=1, hour=0, minute=0, second=0)
+    if n is None:
+        n = np.arange(runner.n)
+        timesteps = [start + datetime.timedelta(seconds=i) for i in range(runner.n)]
+    elif isinstance(n, slice):
+        n = np.arange(start=n.start, stop=n.stop, step=n.step)
+        timesteps = [start + datetime.timedelta(seconds=int(i)) for i in n]
+    else:
+        n = np.asarray(n)
+        timesteps = [start + datetime.timedelta(seconds=i) for i in n]
+
+    if gate is None:
+        gate_multiplier = 1
+    else:
+        gate_multiplier = float(gate) * float(gate)
+
+
+    from stonesoup.models.measurement.linear import LinearGaussian
+    from stonesoup.types.detection import Detection
+    from stonesoup.plotter import AnimatedPlotterly
+
+    plotter = AnimatedPlotterly(timesteps=timesteps, tail_length=5/len(n))
+
+    measurement_model = LinearGaussian(
+        ndim_state=2,
+        mapping=(0, 1),
+        noise_covar=np.array([[5, 0],
+                            [0, 5]])
+    )
+
+    truth = []
+    measurements = []
+    states = []
+
+    for i, t in zip(n, timesteps):
+        tr = StoneSoupState(timestamp=t, mean=runner.many_truth[m, i+1, :2], cov=None)
+        truth.append(tr)
+
+        d = Detection(runner.many_z[m, i+1, :2, :], timestamp=t,
+                      measurement_model=measurement_model)
+        measurements.append(d)
+
+        mean = runner.many_x_hat[m, i, :2, :]
+        cov = runner.many_P_hat[m, i, :2, :2] * gate_multiplier
+        s = StoneSoupState(t, mean, cov)
+        states.append(s)
+
+    plotter.plot_ground_truths([truth], [0, 1])
+
+    plotter.plot_measurements(measurements, [0, 1])
+
+    track = StoneSoupTrack(m, states)
+    plotter.plot_tracks([track], [0, 1], uncertainty=True)
+
+    return plotter.fig

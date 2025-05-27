@@ -3,9 +3,12 @@ import scipy as sp
 from numpy.typing import ArrayLike
 import inspect
 
+from ..np import as_column
+
+
 
 __all__ = ['Runner', 'run_one', 'run_many', 'before_one', 'after_one', 'before_many', 'after_many',
-           'after_update', 'evaluate_nees', 'evaluate_many']
+           'after_update', 'evaluate_nees', 'evaluate_runner']
 
 
 
@@ -20,9 +23,13 @@ class Runner:
         self.m = None
         self.seeds = None
 
+        self.one_truth, self.many_truth = [], []
+        self.one_z, self.many_z = [], []
+        
+        # state and its covariance
         self.one_x_hat, self.one_P_hat = [], []
         self.many_x_hat, self.many_P_hat = [], []
-        self.one_truth, self.many_truth = [], []
+        
         # innovation and its covariance
         self.one_v, self.one_S = [], []
         self.many_v, self.many_S = [], []
@@ -47,6 +54,7 @@ class Runner:
         self.one_P_hat = []
         self.one_v = []
         self.one_S = []
+        self.one_z = []
 
         self.__execute_user_callbacks('before_one')
 
@@ -72,6 +80,8 @@ class Runner:
         self.one_truth = np.copy(self.truth)
         self.many_truth.append(self.one_truth)
 
+        self.many_z.append(np.asarray(self.one_z))
+
         self.__execute_user_callbacks('after_one')
 
     def before_many(self):
@@ -80,26 +90,29 @@ class Runner:
         self.many_truth = []
         self.many_v = []
         self.many_S = []
+        self.many_z = []
 
         self.__execute_user_callbacks('before_many')
 
     def after_many(self):
-        self.many_x_hat = np.array(self.many_x_hat)
-        self.many_P_hat = np.array(self.many_P_hat)
-        self.many_truth = np.array(self.many_truth)
-        self.many_v = np.array(self.many_v)
-        self.many_S = np.array(self.many_S)
+        self.many_x_hat = np.asarray(self.many_x_hat)
+        self.many_P_hat = np.asarray(self.many_P_hat)
+        self.many_truth = np.asarray(self.many_truth)
+        self.many_v = np.asarray(self.many_v)
+        self.many_S = np.asarray(self.many_S)
+        self.many_z = np.asarray(self.many_z)
 
         assert self.many_x_hat.shape[0] == self.m
         assert self.many_P_hat.shape[0] == self.m
         assert self.many_truth.shape[0] == self.m
         assert self.many_v.shape[0] == self.m
         assert self.many_S.shape[0] == self.m
+        assert self.many_z.shape[0] == self.m
 
         self.__execute_user_callbacks('after_many')
 
     def __execute_user_callbacks(self, stage, *args):
-        for name, member in inspect.getmembers(self, inspect.ismethod):
+        for _, member in inspect.getmembers(self, inspect.ismethod):
             if hasattr(member, 'runner_callback') and member.runner_callback == stage:
                 member(*args)
 
@@ -115,6 +128,7 @@ class Runner:
 
         self.kf.reset()
         self.kf.initialize(m.z, m.R)
+        self.one_z.append(as_column(m.z))
 
         self.after_initialize()
 
@@ -129,6 +143,7 @@ class Runner:
             self.kf.prepare_update(m.z, m.R)
             self.kf.update()
 
+            self.one_z.append(as_column(m.z))
             self.after_update(m)
 
         self.after_one()
