@@ -176,23 +176,22 @@ class StateFilterRunner(Runner):
         self.n = n
         
         self._execute_user_callbacks('before_one')
-        self.truth = self.target.true_states(T, n+1)
+        self.target.cache(T, n+1)
+        self.truth = self.target.cached_states
         
-        m = self.sensor.generate_measurement(t, self.truth[0, :self.dim])
+        m = self.sensor.generate_measurement(t, self.target)
 
         self.kf.reset()
         self.kf.initialize(m.z, m.R)
 
         self._execute_user_callbacks('after_initialize', m)
 
-        for position in self.truth[1:, :self.dim]:
-            t += T
-
+        for t in np.arange(1, n+1) * T:
             self.kf.predict(T)
 
             self._execute_user_callbacks('after_predict')
 
-            m = self.sensor.generate_measurement(t, position)
+            m = self.sensor.generate_measurement(t, self.target)
             self.kf.prepare_update(m.z, m.R)
             self.kf.update()
 

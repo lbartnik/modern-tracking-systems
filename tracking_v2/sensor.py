@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import List
+
+from .target import Target
 
 
 class SensorMeasurement:
@@ -36,9 +37,10 @@ class GeometricSensor:
     def reset_rng(self, rng: np.random.Generator = None):
         self.rng = rng
 
-    def generate_measurement(self, t: float, position: np.ndarray) -> SensorMeasurement:
-        position = np.array(position).squeeze()
-        assert position.shape == (self.spatial_dim,), f"Position shape ({position.shape}) not equal to spatial dim {self.spatial_dim}"
+    def generate_measurement(self, t: float, target: Target) -> SensorMeasurement:
+        position = target.true_state(t)
+        position = np.asarray(position).squeeze()
+        position = position[:self.spatial_dim]
 
         error = self.rng.multivariate_normal(np.zeros(self.spatial_dim), self.R, size=1)
         measurement = position + error

@@ -13,12 +13,13 @@ class Target(object):
     rng: np.random.Generator
     T: float
     n: int
-    cached: np.ndarray
+    cached_states: np.ndarray
 
     def cache(self, T: float = 1, n: int = 400):
         self.T = T
         self.n = n
-        self.cached = self.true_states(T, n)
+        self.cached_time = np.arange(0, n) * T
+        self.cached_states = self.true_states(T, n)
 
     def reset_seed(self, seed: int = 0):
         self.seed = seed
@@ -35,10 +36,19 @@ class Target(object):
             return f"{self.name}_{self.seed}"
 
     def true_state(self, t: float) -> np.ndarray:
-        if self.cached is not None:
-            return self.cached[t, :]
-        else:
-            return self.true_states()[t, :]
+        assert self.cached_states is not None, "States are not present in cache"
+        
+        index = self.cached_time == t
+        if np.any(index):
+            return self.cached_states[index]
+
+        state = []    
+        for i in range(self.cached_states.shape[-1]):
+            interpolated = np.interp(t, self.cached_time, self.cached_states[:, i])
+            state.append(interpolated)
+        
+        return np.asarray(state)
+        
 
     def true_states(self, T: float = 1, n: int = 400) -> np.ndarray:
         """Generate target states.
