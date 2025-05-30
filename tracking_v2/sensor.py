@@ -5,7 +5,7 @@ from .target import Target
 
 
 class SensorMeasurement:
-    def __init__(self, time: float, z: ArrayLike, R: ArrayLike, error: ArrayLike):
+    def __init__(self, target_id: int, time: float, z: ArrayLike, R: ArrayLike, error: ArrayLike):
         """Construct a sensor measurement.
 
         Args:
@@ -13,6 +13,7 @@ class SensorMeasurement:
             z (ArrayLike): Measurement.
             R (ArrayLike): Measurement error covariance matrix.
         """
+        self.target_id = target_id
         self.time = time
         self.z = np.asarray(z)
         self.R = np.asarray(R)
@@ -44,4 +45,4 @@ class GeometricSensor:
 
         error = self.rng.multivariate_normal(np.zeros(self.spatial_dim), self.R, size=1)
         measurement = position + error
-        return SensorMeasurement(t, measurement, self.R, error)
+        return SensorMeasurement(target.id, t, measurement, self.R, error)
