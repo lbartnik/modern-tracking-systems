@@ -10,7 +10,8 @@ import plotly.express as ex
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .runner import NScoreEvaluationResult, Runner, evaluate_runner
+from .stonesoup import AnimatedPlotterly
+from .runner import NScoreEvaluationResult, Runner, StateFilterRunner, evaluate_runner
 from ..util import SubFigure, to_df, colorscale
 
 
@@ -252,7 +253,7 @@ class StoneSoupTrack:
 
 
 
-def plot_track(runner: Runner, m: int = 0, n: ArrayLike = None, gate: float = None) -> go.Figure:
+def plot_track(runner: StateFilterRunner, m: int = 0, n: ArrayLike = None, gate: float = None) -> go.Figure:
     start = datetime.datetime(year=1970, month=1, day=1, hour=0, minute=0, second=0)
     if n is None:
         n = np.arange(runner.n)
@@ -265,22 +266,27 @@ def plot_track(runner: Runner, m: int = 0, n: ArrayLike = None, gate: float = No
         timesteps = [start + datetime.timedelta(seconds=i) for i in n]
 
     if gate is None:
-        gate_multiplier = 1
-    else:
-        gate_multiplier = float(gate) * float(gate)
+        gate = 1
 
+    tail_length = 5
+
+    e = evaluate_runner(runner)
+    position_nis = e.position_nis.scores[m, n]
+    position_error = e.position_error[m, n]
+    position_cov = np.sqrt(np.linalg.det(runner.many_P_hat[m, n, :3, :3]))
 
     from stonesoup.models.measurement.linear import LinearGaussian
     from stonesoup.types.detection import Detection
-    from stonesoup.plotter import AnimatedPlotterly
 
-    plotter = AnimatedPlotterly(timesteps=timesteps, tail_length=5/len(n))
+
+    fig = make_subplots(rows=3, cols=1, row_heights=[.5, .25, .25], specs=[[{}], [{"secondary_y": True}], [{}]])
+
+    plotter = AnimatedPlotterly(timesteps=timesteps, tail_length=tail_length/len(n), figure=SubFigure(fig, 1, 1))
 
     measurement_model = LinearGaussian(
         ndim_state=2,
         mapping=(0, 1),
-        noise_covar=np.array([[5, 0],
-                            [0, 5]])
+        noise_covar=np.eye(2)
     )
 
     truth = []
@@ -296,7 +302,7 @@ def plot_track(runner: Runner, m: int = 0, n: ArrayLike = None, gate: float = No
         measurements.append(d)
 
         mean = runner.many_x_hat[m, i, :2, :]
-        cov = runner.many_P_hat[m, i, :2, :2] * gate_multiplier
+        cov = runner.many_P_hat[m, i, :2, :2] * gate
         s = StoneSoupState(t, mean, cov)
         states.append(s)
 
@@ -307,4 +313,86 @@ def plot_track(runner: Runner, m: int = 0, n: ArrayLike = None, gate: float = No
     track = StoneSoupTrack(m, states)
     plotter.plot_tracks([track], [0, 1], uncertainty=True)
 
-    return plotter.fig
+    # plot errors
+    trace_base = len(plotter.fig.data)  # number of traces currently in the animation
+
+    # NIS
+    error_kwargs = dict(x=[], y=[], mode="lines", hoverinfo='none', legendgroup='NIS',
+                        line=dict(dash="dash", color=plotter.colorway[3]),
+                        name='NIS', showlegend=True)
+    fig.add_trace(go.Scatter(error_kwargs), row=2, col=1)
+    fig.add_hline(y=gate, line_width=.5, line_dash="dash", line_color="red", annotation_text='NIS gate', annotation_position='bottom left')
+
+    fig.update_xaxes(range=[n.min() - tail_length + 1, n.max() + tail_length - 1], row=2, col=1)
+    fig.update_yaxes(range=[0, position_nis.max() + 1], row=2, col=1)
+
+    # absolute error
+    error_kwargs = dict(x=[], y=[], mode="lines", hoverinfo='none', legendgroup='Error',
+                        line=dict(dash="dash", color=plotter.colorway[4]),
+                        name='Error', showlegend=True)
+    fig.add_trace(go.Scatter(error_kwargs), row=2, col=1, secondary_y=True)
+    fig.update_yaxes(range=[0, position_error.max() * 1.02], row=2, col=1, secondary_y=True)
+
+    # volume of covariance
+    error_kwargs = dict(x=[], y=[], mode="lines", hoverinfo='none', legendgroup='cov',
+                        line=dict(dash="dash", color=plotter.colorway[5]),
+                        name='Det[Cov]', showlegend=True)
+    fig.add_trace(go.Scatter(error_kwargs), row=3, col=1)
+    fig.update_xaxes(range=[n.min() - tail_length + 1, n.max() + tail_length - 1], row=3, col=1)
+    fig.update_yaxes(range=[0, np.log10(position_cov.max())], type='log', row=3, col=1)
+
+
+
+    timesteps = np.asarray(timesteps)
+    times = np.asarray([str(t) for t in timesteps])
+
+    for frame in fig.frames:
+        data_ = list(frame.data)
+        traces_ = list(frame.traces)
+
+        # NIS legend
+        data_.append(go.Scatter(x=[0, 0], y=[0, 0]))
+        traces_.append(trace_base)
+
+        # error legend
+        data_.append(go.Scatter(x=[0, 0], y=[0, 0]))
+        traces_.append(trace_base)
+
+        frame_time = datetime.datetime.fromisoformat(frame.name)
+        cutoff_time = (frame_time - plotter.time_window)
+        mask = np.logical_and(timesteps <= frame_time, timesteps >= cutoff_time)
+
+        # NIS
+        data_.append(go.Scatter(x=n[mask],
+                                     y=position_nis[mask],
+                                     meta=times[mask],
+                                     hovertemplate='NIS' +
+                                                '<br>(%{y})' +
+                                                '<br>Time: %{meta}'))
+        traces_.append(trace_base)
+
+        # error
+        data_.append(go.Scatter(x=n[mask],
+                                     y=position_error[mask],
+                                     meta=times[mask],
+                                     hovertemplate='Error' +
+                                                '<br>(%{y})' +
+                                                '<br>Time: %{meta}'))
+
+        traces_.append(trace_base + 1)
+
+        # covariance
+        data_.append(go.Scatter(x=n[mask],
+                                     y=position_cov[mask],
+                                     meta=times[mask],
+                                     hovertemplate='Cov' +
+                                                '<br>(%{y})' +
+                                                '<br>Time: %{meta}'))
+
+        traces_.append(trace_base + 2)
+
+        frame.data = data_
+        frame.traces = traces_
+
+    fig.update_layout(height=800)
+    return fig

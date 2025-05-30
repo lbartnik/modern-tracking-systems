@@ -14,12 +14,37 @@ from typing import Any, Dict, Iterable, List, Union
 __all__ = ['SubFigure', 'to_df', 'colorscale', 'display']
 
 
-class SubFigure:
+class SubFigure(object):
     def __init__(self, fig: go.Figure, row: int, col: int):
         self.fig = fig
         self.row = row
         self.col = col
     
+    @property
+    def frames(self):
+        return self.fig.frames
+
+    @frames.setter
+    def frames(self, value):
+        self.fig.frames = value
+    
+    @property
+    def data(self):
+        return self.fig.data
+
+    @data.setter
+    def data(self, value):
+        self.fig.data = value
+
+    @property
+    def layout(self):
+        return self.fig.layout
+
+    @layout.setter
+    def layout(self, value):
+        self.fig.layout = value
+
+
     def add_trace(self, *args, **kwargs):
         kwargs['row'] = self.row
         kwargs['col'] = self.col
@@ -39,6 +64,19 @@ class SubFigure:
         kwargs['row'] = self.row
         kwargs['col'] = self.col
         self.fig.add_annotation(*args, **kwargs)
+    
+    def update_layout(self, *args, **kwargs):
+        self.fig.update_layout(*args, **kwargs)
+    
+    def update_xaxes(self, *args, **kwargs):
+        kwargs['row'] = self.row
+        kwargs['col'] = self.col
+        self.fig.update_xaxes(*args, **kwargs)
+
+    def update_yaxes(self, *args, **kwargs):
+        kwargs['row'] = self.row
+        kwargs['col'] = self.col
+        self.fig.update_yaxes(*args, **kwargs)
 
 
 
