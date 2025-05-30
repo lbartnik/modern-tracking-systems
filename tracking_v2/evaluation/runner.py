@@ -2,17 +2,78 @@ import numpy as np
 import scipy as sp
 from numpy.typing import ArrayLike
 import inspect
+from typing import Dict, List
 
 from ..np import as_column
 
 
 
-__all__ = ['Runner', 'run_one', 'run_many', 'before_one', 'after_one', 'before_many', 'after_many',
-           'after_update', 'evaluate_nees', 'evaluate_runner']
+__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update',
+           'StateFilterRunner', 'evaluate_nees', 'evaluate_runner']
+
+
+
+def before_one(method):
+    method.runner_callback_tag = 'before_one'
+    return method
+
+
+def after_one(method):
+    method.runner_callback_tag = 'after_one'
+    return method
+
+
+def before_many(method):
+    method.runner_callback_tag = 'before_many'
+    return method
+
+
+def after_many(method):
+    method.runner_callback_tag = 'after_many'
+    return method
+
+
+def after_initialize(method):
+    method.runner_callback_tag = 'after_initialize'
+    return method
+
+
+def after_predict(method):
+    method.runner_callback_tag = 'after_predict'
+    return method
+
+
+def after_update(method):
+    method.runner_callback_tag = 'after_update'
+    return method
+
 
 
 
 class Runner:
+    _callbacks: Dict = None
+
+
+    def _execute_user_callbacks(self, stage, *args):
+        if self._callbacks is None:
+            self._callbacks = {}
+        
+        if stage not in self._callbacks:
+            callbacks = []
+            for name, member in inspect.getmembers(self, inspect.ismethod):
+                if hasattr(member, 'runner_callback_tag') and member.runner_callback_tag == stage:
+                    callbacks.append(member)
+            self._callbacks[stage] = callbacks
+        
+        for callback in self._callbacks[stage]:
+            callback(*args)
+
+
+
+# ----------------------------------------------------------------------
+
+
+class StateFilterRunner(Runner):
     def __init__(self, target, sensor, kf):
         self.target = target
         self.sensor = sensor
@@ -36,29 +97,31 @@ class Runner:
 
         self.dim = 3
 
-    def after_predict(self):
+    @after_initialize
+    def __after_initialize(self, m):
+        self.one_z.append(as_column(m.z))
+
+    @after_predict
+    def __after_predict(self):
         self.one_x_hat.append(np.copy(self.kf.x_hat))
         self.one_P_hat.append(np.copy(self.kf.P_hat))
     
-    def after_initialize(self):
-        pass
-
-    def after_update(self, m):
+    @after_update
+    def __after_update(self, m):
         self.one_v.append(np.copy(self.kf.innovation))
         self.one_S.append(np.copy(self.kf.S))
+        self.one_z.append(as_column(m.z))
 
-        self.__execute_user_callbacks('after_update', m)
-
-    def before_one(self):
+    @before_one
+    def __before_one(self):
         self.one_x_hat = []
         self.one_P_hat = []
         self.one_v = []
         self.one_S = []
         self.one_z = []
 
-        self.__execute_user_callbacks('before_one')
-
-    def after_one(self):
+    @after_one
+    def __after_one(self):
         self.one_x_hat = np.array(self.one_x_hat)
         self.one_P_hat = np.array(self.one_P_hat)
 
@@ -82,9 +145,8 @@ class Runner:
 
         self.many_z.append(np.asarray(self.one_z))
 
-        self.__execute_user_callbacks('after_one')
-
-    def before_many(self):
+    @before_many
+    def __before_many(self):
         self.many_x_hat = []
         self.many_P_hat = []
         self.many_truth = []
@@ -92,9 +154,8 @@ class Runner:
         self.many_S = []
         self.many_z = []
 
-        self.__execute_user_callbacks('before_many')
-
-    def after_many(self):
+    @after_many
+    def __after_many(self):
         self.many_x_hat = np.asarray(self.many_x_hat)
         self.many_P_hat = np.asarray(self.many_P_hat)
         self.many_truth = np.asarray(self.many_truth)
@@ -109,44 +170,35 @@ class Runner:
         assert self.many_S.shape[0] == self.m
         assert self.many_z.shape[0] == self.m
 
-        self.__execute_user_callbacks('after_many')
-
-    def __execute_user_callbacks(self, stage, *args):
-        for _, member in inspect.getmembers(self, inspect.ismethod):
-            if hasattr(member, 'runner_callback') and member.runner_callback == stage:
-                member(*args)
-
 
     def run_one(self, n: int, T: float = 1):
         t = 0
         self.n = n
         
-        self.before_one()
+        self._execute_user_callbacks('before_one')
         self.truth = self.target.true_states(T, n+1)
         
         m = self.sensor.generate_measurement(t, self.truth[0, :self.dim])
 
         self.kf.reset()
         self.kf.initialize(m.z, m.R)
-        self.one_z.append(as_column(m.z))
 
-        self.after_initialize()
+        self._execute_user_callbacks('after_initialize', m)
 
         for position in self.truth[1:, :self.dim]:
             t += T
 
             self.kf.predict(T)
 
-            self.after_predict()
+            self._execute_user_callbacks('after_predict')
 
             m = self.sensor.generate_measurement(t, position)
             self.kf.prepare_update(m.z, m.R)
             self.kf.update()
 
-            self.one_z.append(as_column(m.z))
-            self.after_update(m)
+            self._execute_user_callbacks('after_update', m)
 
-        self.after_one()
+        self._execute_user_callbacks('after_one')
 
 
 
@@ -159,7 +211,7 @@ class Runner:
         self.m = m
         self.seeds = seeds
 
-        self.before_many()
+        self._execute_user_callbacks('before_many')
         for seed in seeds:
             rng = np.random.default_rng(seed=seed)
             self.sensor.reset_rng(rng)
@@ -167,44 +219,12 @@ class Runner:
 
             self.run_one(n, T)
         
-        self.after_many()
+        self._execute_user_callbacks('after_many')
 
 
-def run_one(n, target, sensor, kf):
-    runner = Runner(target, sensor, kf)
-    runner.run_one(n)
-    return runner.one_x_hat, runner.one_P_hat, runner.truth[1:,:]
 
 
-def run_many(m, n, target, sensor, kf, seeds=None):
-    runner = Runner(target, sensor, kf)
-    runner.run_many(m, n, seeds)
-    return runner.many_x_hat, runner.many_P_hat, runner.truth[1:,:]
 
-
-def before_one(method):
-    method.runner_callback = 'before_one'
-    return method
-
-
-def after_one(method):
-    method.runner_callback = 'after_one'
-    return method
-
-
-def before_many(method):
-    method.runner_callback = 'before_many'
-    return method
-
-
-def after_many(method):
-    method.runner_callback = 'after_many'
-    return method
-
-
-def after_update(method):
-    method.runner_callback = 'after_update'
-    return method
 
 
 
@@ -303,7 +323,7 @@ def evaluate_nis(v: ArrayLike, S: ArrayLike) -> NScoreEvaluationResult:
 
 
 
-class EvaluationResult:
+class StateFilterEvaluationResult:
     def __init__(self, position_nees: NScoreEvaluationResult, velocity_nees: NScoreEvaluationResult,
                  position_nis: NScoreEvaluationResult, velocity_nis: NScoreEvaluationResult,
                  position_error: np.ndarray):
@@ -315,7 +335,7 @@ class EvaluationResult:
 
 
 
-def evaluate_runner(runner):
+def evaluate_runner(runner: StateFilterRunner):
     x_hat, P_hat, truth, v, S = runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], \
                                 runner.many_truth[:, 1:, :6], runner.many_v[:, :, :6, :], \
                                 runner.many_S[:, :, :6, :6]
@@ -339,7 +359,7 @@ def evaluate_runner(runner):
     if len(truth.shape) == 2:
         truth = np.expand_dims(truth, 0)
 
-    return EvaluationResult(
+    return StateFilterEvaluationResult(
         evaluate_nees(x_hat[:,:,:3,:], P_hat[:,:,:3,:3], truth[:, :,:3]),
         evaluate_nees(x_hat[:,:,3:,:], P_hat[:,:,3:,3:], truth[:, :,3:]),
         evaluate_nis(v[:,:,:3,:], S[:,:,:3,:3]),
@@ -348,5 +368,5 @@ def evaluate_runner(runner):
     )
 
 
-def nees_ci(runner):
-    return sp.stats.chi2.ppf([0.025, 0.975], runner.m * runner.dim) / runner.m
+def nees_ci(runner: StateFilterRunner, qs: List[float] = [.025, .975]):
+    return sp.stats.chi2.ppf(qs, runner.m * runner.dim) / runner.m
