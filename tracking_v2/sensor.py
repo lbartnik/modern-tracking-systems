@@ -23,18 +23,26 @@ class SensorMeasurement:
         assert self.R.squeeze().shape[0] == self.R.squeeze().shape[1]
 
 
-class GeometricSensor:
+class Sensor(object):
+    sensor_id: int
+
+    def generate_measurement(self, t: float, target: Target) -> SensorMeasurement:
+       raise Exception(f"generate_measurement() method not implemented in {self.__class__.__name__}")
+
+
+
+class GeometricSensor(Sensor):
     spatial_dim: int
 
-    def __init__(self, R: np.ndarray = np.eye(3), seed: int = 12345):
+    def __init__(self, R: np.ndarray = np.eye(3), seed: int = 12345, sensor_id: int = 0):
+        self.sensor_id = sensor_id
         self.spatial_dim = 3
+
         self.R = np.array(R)
         assert self.R.shape == (self.spatial_dim, self.spatial_dim)
-        self.reset_seed(seed)
-    
-    def reset_seed(self, seed: int = 12345):
-        self.rng = np.random.default_rng(seed=seed)
-    
+        
+        self.reset_rng(np.random.default_rng(seed=seed))
+        
     def reset_rng(self, rng: np.random.Generator = None):
         self.rng = rng
 

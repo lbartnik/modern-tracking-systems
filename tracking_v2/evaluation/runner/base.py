@@ -1,14 +1,8 @@
-import numpy as np
-import scipy as sp
-from numpy.typing import ArrayLike
 import inspect
 from typing import Dict, List
 
-from ..np import as_column
 
-
-
-__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update', 'Runner']
+__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update', 'after_estimate', 'Runner']
 
 
 
@@ -47,6 +41,11 @@ def after_update(method):
     return method
 
 
+def after_estimate(method):
+    method.runner_callback_tag = 'after_estimate'
+    return method
+
+
 
 
 class Runner:
@@ -66,3 +65,9 @@ class Runner:
         
         for callback in self._callbacks[stage]:
             callback(*args)
+
+    def run_one(self, n: int, T: float = 1):
+        raise Exception(f"run_one() method not implemented in {self.__class__.__name__}")
+
+    def run_many(self, m: int, n: int, T: float = 1, seeds: List[int]=None):
+        raise Exception(f"run_many() method not implemented in {self.__class__.__name__}")
