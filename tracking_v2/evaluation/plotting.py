@@ -92,7 +92,7 @@ def plot_3d(runner, skip=0, run=0):
 
 
 
-def plot_nscore(score: NScoreEvaluationResult, skip: int=25) -> go.Figure:
+def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) -> go.Figure:
     scores = score.scores[:, skip:]
     dim    = score.dim
     type   = score.type
@@ -107,12 +107,15 @@ def plot_nscore(score: NScoreEvaluationResult, skip: int=25) -> go.Figure:
     # confidence interval for individual runs
     ci_qs = sp.stats.chi2.ppf([0.025, 0.975], dim)
 
-    fig = make_subplots(rows=2, cols=2, specs=[[{"colspan": 2}, None], [{}, {}]],
-                        subplot_titles=[f'{type} vs. time', f'Mean {type}', f'All {type}'])
+    fig = make_subplots(rows=3, cols=2, specs=[[{"colspan": 2}, None],
+                                               [{}, {}],
+                                               [{"secondary_y": True}, {"secondary_y": True}]],
+                        subplot_titles=[f'{type} vs. time', f'Mean {type}', f'All {type}', 'Mean CDF', 'All CDF'])
     tm = SubFigure(fig, 1, 1)
     h1 = SubFigure(fig, 2, 1)
     h2 = SubFigure(fig, 2, 2)
-
+    mean_cdf = SubFigure(fig, 3, 1)
+    all_cdf = SubFigure(fig, 3, 2)
 
     # -- time plot
     x = np.arange(scores.shape[1])
@@ -163,11 +166,40 @@ def plot_nscore(score: NScoreEvaluationResult, skip: int=25) -> go.Figure:
     h2.add_annotation(text=f"{round(center*100, 2)}%", xref="x domain", yref="y domain", x=.2, y=1, showarrow=False)
     h2.add_annotation(text=f"{round(upper*100, 2)}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
 
-    fig.update_layout(height=700)    
+
+    # --- mean CDF
+    x, step = np.linspace(0, mean_score.reshape(-1).max(), 200, retstep=True)
+    ecdf = sp.stats.ecdf(mean_score.reshape(-1))
+    ecdf_y = ecdf.cdf.evaluate(x)
+    cdf_y = sp.stats.chi2.cdf(x * 100, 300)
+    cdf_diff = ecdf_y - cdf_y
+    cdf_diff_area = np.sum(np.abs(cdf_diff)) * step
+
+    mean_cdf.add_trace(go.Scatter(x=x, y=ecdf_y, name='ECDF', legendgroup='ecdf', showlegend=True, line_color="#31c3fd"))
+    mean_cdf.add_trace(go.Scatter(x=x, y=cdf_y, name='CDF', legendgroup='cdf', showlegend=True, line_color="#25c420"))
+    mean_cdf.add_trace(go.Scatter(x=x, y=cdf_diff, name='ECDF - CDF', legendgroup='cdf_diff', showlegend=True, line_color="#830606"), secondary_y=True)
+    mean_cdf.add_annotation(text=f"diff area: {round(cdf_diff_area, 3)}", xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
+
+
+    # --- all CDF
+    x, step = np.linspace(0, scores.reshape(-1).max(), 200, retstep=True)
+    ecdf = sp.stats.ecdf(scores.reshape(-1))
+    ecdf_y = ecdf.cdf.evaluate(x)
+    cdf_y = sp.stats.chi2.cdf(x, 3)
+    cdf_diff = ecdf_y - cdf_y
+    cdf_diff_area = np.sum(np.abs(cdf_diff)) * step
+
+    all_cdf.add_trace(go.Scatter(x=x, y=ecdf_y, name='ECDF', legendgroup='ecdf', showlegend=False, line_color="#31c3fd"))
+    all_cdf.add_trace(go.Scatter(x=x, y=cdf_y, name='CDF', legendgroup='cdf', showlegend=False, line_color="#25c420"))
+    all_cdf.add_trace(go.Scatter(x=x, y=cdf_diff, name='ECDF - CDF', legendgroup='cdf_diff', showlegend=False, line_color="#830606"), secondary_y=True)
+    all_cdf.add_annotation(text=f"diff area: {round(cdf_diff_area, 3)}", xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
+
+
+    fig.update_layout(title=title, height=700)
     return fig
 
 
-def plot_runs(nees: NScoreEvaluationResult, n: int=None, skip: int=25) -> go.Figure:
+def plot_runs(nees: NScoreEvaluationResult, n: int=None, title: str = None, skip: int=25) -> go.Figure:
     # runs x time
     assert len(nees.scores.shape) == 2
     scores = nees.scores[:, skip:]
@@ -186,6 +218,7 @@ def plot_runs(nees: NScoreEvaluationResult, n: int=None, skip: int=25) -> go.Fig
         #fig.add_trace(go.Scatter(x=x, y=scores[i,:],  name=f'run {i}', mode='markers', marker=dict(size=0.5)))
         fig.add_trace(go.Scatter(x=x, y=scores[i,:],  name=f'run {i}', mode='lines', line=dict(width=.4), opacity=0.5))
 
+    fig.update_layout(title=title, height=700)
     return fig
 
 

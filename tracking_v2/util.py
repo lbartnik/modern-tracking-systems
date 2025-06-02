@@ -134,7 +134,7 @@ class DisplayProcessor:
         self._count   = 0
         self._pattern = 'images/fig{count:02d}.png'
 
-    def __call__(self, fig, as_png: bool = None):
+    def __call__(self, fig, as_png: bool = None, width: int = 1200, height: int = 700):
         if (as_png is not None and not as_png) or not self.as_png:
             return fig
         
@@ -145,7 +145,7 @@ class DisplayProcessor:
         if not os.path.exists(dirname):
             os.mkdir(dirname)
 
-        fig.write_image(path)
+        fig.write_image(path, width=width, height=height)
         ipython.display(ipython.Image(filename=path))
 
 
