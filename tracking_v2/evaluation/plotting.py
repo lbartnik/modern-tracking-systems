@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .stonesoup import AnimatedPlotterly
-from .runner import NScoreEvaluationResult, Runner, StateFilterRunner, evaluate_runner
+from .runner.state import NScoreEvaluationResult, Runner, StateFilterRunner, evaluate_runner
 from ..util import SubFigure, to_df, colorscale
 
 

@@ -39,7 +39,7 @@ class StateFilterRunner(Runner):
     def after_initialize(self, m):
         self.one_z.append(as_column(m.z))
 
-        self._execute_user_callbacks('after_initialize')
+        self._execute_user_callbacks('after_initialize', m)
 
     def after_predict(self):
         self.one_x_hat.append(np.copy(self.kf.x_hat))
@@ -52,7 +52,7 @@ class StateFilterRunner(Runner):
         self.one_S.append(np.copy(self.kf.S))
         self.one_z.append(as_column(m.z))
 
-        self._execute_user_callbacks('after_update')
+        self._execute_user_callbacks('after_update', m)
 
     def before_one(self):
         self.one_x_hat = []
