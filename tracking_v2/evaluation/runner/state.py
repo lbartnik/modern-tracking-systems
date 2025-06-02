@@ -1,76 +1,15 @@
 import numpy as np
 import scipy as sp
 from numpy.typing import ArrayLike
-import inspect
-from typing import Dict, List
+from typing import List
 
-from ..np import as_column
-
-
-
-__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update',
-           'StateFilterRunner', 'evaluate_nees', 'evaluate_runner']
+from .base import Runner
+from ...np import as_column
 
 
 
-def before_one(method):
-    method.runner_callback_tag = 'before_one'
-    return method
+__all__ = ['StateFilterRunner', 'evaluate_nees', 'evaluate_runner']
 
-
-def after_one(method):
-    method.runner_callback_tag = 'after_one'
-    return method
-
-
-def before_many(method):
-    method.runner_callback_tag = 'before_many'
-    return method
-
-
-def after_many(method):
-    method.runner_callback_tag = 'after_many'
-    return method
-
-
-def after_initialize(method):
-    method.runner_callback_tag = 'after_initialize'
-    return method
-
-
-def after_predict(method):
-    method.runner_callback_tag = 'after_predict'
-    return method
-
-
-def after_update(method):
-    method.runner_callback_tag = 'after_update'
-    return method
-
-
-
-
-class Runner:
-    _callbacks: Dict = None
-
-
-    def _execute_user_callbacks(self, stage, *args):
-        if self._callbacks is None:
-            self._callbacks = {}
-        
-        if stage not in self._callbacks:
-            callbacks = []
-            for name, member in inspect.getmembers(self, inspect.ismethod):
-                if hasattr(member, 'runner_callback_tag') and member.runner_callback_tag == stage:
-                    callbacks.append(member)
-            self._callbacks[stage] = callbacks
-        
-        for callback in self._callbacks[stage]:
-            callback(*args)
-
-
-
-# ----------------------------------------------------------------------
 
 
 class StateFilterRunner(Runner):
@@ -97,31 +36,34 @@ class StateFilterRunner(Runner):
 
         self.dim = 3
 
-    @after_initialize
-    def __after_initialize(self, m):
+    def after_initialize(self, m):
         self.one_z.append(as_column(m.z))
 
-    @after_predict
-    def __after_predict(self):
+        self._execute_user_callbacks('after_initialize')
+
+    def after_predict(self):
         self.one_x_hat.append(np.copy(self.kf.x_hat))
         self.one_P_hat.append(np.copy(self.kf.P_hat))
+        
+        self._execute_user_callbacks('after_predict')
     
-    @after_update
-    def __after_update(self, m):
+    def after_update(self, m):
         self.one_v.append(np.copy(self.kf.innovation))
         self.one_S.append(np.copy(self.kf.S))
         self.one_z.append(as_column(m.z))
 
-    @before_one
-    def __before_one(self):
+        self._execute_user_callbacks('after_update')
+
+    def before_one(self):
         self.one_x_hat = []
         self.one_P_hat = []
         self.one_v = []
         self.one_S = []
         self.one_z = []
 
-    @after_one
-    def __after_one(self):
+        self._execute_user_callbacks('before_one')
+
+    def after_one(self):
         self.one_x_hat = np.array(self.one_x_hat)
         self.one_P_hat = np.array(self.one_P_hat)
 
@@ -145,8 +87,9 @@ class StateFilterRunner(Runner):
 
         self.many_z.append(np.asarray(self.one_z))
 
-    @before_many
-    def __before_many(self):
+        self._execute_user_callbacks('after_one')
+
+    def before_many(self):
         self.many_x_hat = []
         self.many_P_hat = []
         self.many_truth = []
@@ -154,8 +97,9 @@ class StateFilterRunner(Runner):
         self.many_S = []
         self.many_z = []
 
-    @after_many
-    def __after_many(self):
+        self._execute_user_callbacks('before_many')
+
+    def after_many(self):
         self.many_x_hat = np.asarray(self.many_x_hat)
         self.many_P_hat = np.asarray(self.many_P_hat)
         self.many_truth = np.asarray(self.many_truth)
@@ -170,12 +114,14 @@ class StateFilterRunner(Runner):
         assert self.many_S.shape[0] == self.m
         assert self.many_z.shape[0] == self.m
 
+        self._execute_user_callbacks('after_many')
+
 
     def run_one(self, n: int, T: float = 1):
         t = 0
         self.n = n
         
-        self._execute_user_callbacks('before_one')
+        self.before_one()
         self.target.cache(T, n+1)
         self.truth = self.target.cached_states
         
@@ -184,20 +130,20 @@ class StateFilterRunner(Runner):
         self.kf.reset()
         self.kf.initialize(m.z, m.R)
 
-        self._execute_user_callbacks('after_initialize', m)
+        self.after_initialize(m)
 
         for t in np.arange(1, n+1) * T:
             self.kf.predict(T)
 
-            self._execute_user_callbacks('after_predict')
+            self.after_predict()
 
             m = self.sensor.generate_measurement(t, self.target)
             self.kf.prepare_update(m.z, m.R)
             self.kf.update()
 
-            self._execute_user_callbacks('after_update', m)
+            self.after_update(m)
 
-        self._execute_user_callbacks('after_one')
+        self.after_one()
 
 
 
@@ -210,7 +156,7 @@ class StateFilterRunner(Runner):
         self.m = m
         self.seeds = seeds
 
-        self._execute_user_callbacks('before_many')
+        self.before_many()
         for seed in seeds:
             rng = np.random.default_rng(seed=seed)
             self.sensor.reset_rng(rng)
@@ -218,7 +164,7 @@ class StateFilterRunner(Runner):
 
             self.run_one(n, T)
         
-        self._execute_user_callbacks('after_many')
+        self.after_many()
 
 
 
