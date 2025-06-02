@@ -42,6 +42,7 @@ class NearConstantVelocityTarget(Target):
             integration_steps_count (int): Approximate the continuous-time white-noise acceleration by
                 integrating over this many steps.
         """
+        self.target_id = 0
         self.speed = float(speed)
         self.velocity = np.array([1, 0, 0]) # velocity direction, unit vector
         self.spatial_dim = 3

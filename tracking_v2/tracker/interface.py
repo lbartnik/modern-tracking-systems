@@ -25,3 +25,6 @@ class Tracker(object):
 
     def estimate_tracks(self, time: float) -> List[Track]:
         raise Exception(f"estimate_tracks() method not implemented in {self.__class__.__name__}")
+
+    def reset(self) -> List[Track]:
+        raise Exception(f"reset() method not implemented in {self.__class__.__name__}")
