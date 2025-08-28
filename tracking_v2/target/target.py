@@ -7,7 +7,7 @@ __all__ = ['Target']
 
 
 class Target(object):
-    id: int = 1
+    target_id: int = 1
     name: str
     spatial_dim: int
     seed: int
