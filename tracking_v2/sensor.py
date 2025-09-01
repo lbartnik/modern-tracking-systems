@@ -53,4 +53,4 @@ class GeometricSensor(Sensor):
 
         error = self.rng.multivariate_normal(np.zeros(self.spatial_dim), self.R, size=1)
         measurement = position + error
-        return SensorMeasurement(target.id, t, measurement, self.R, error)
+        return SensorMeasurement(target.target_id, t, measurement, self.R, error)

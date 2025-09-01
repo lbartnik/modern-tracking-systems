@@ -8,11 +8,11 @@ from ...np import as_column
 
 
 
-__all__ = ['StateFilterRunner', 'evaluate_nees', 'evaluate_runner']
+__all__ = ['FilterRunner', 'evaluate_nees', 'evaluate_runner']
 
 
 
-class StateFilterRunner(Runner):
+class FilterRunner(Runner):
     def __init__(self, target, sensor, kf):
         self.target = target
         self.sensor = sensor
@@ -268,7 +268,7 @@ def evaluate_nis(v: ArrayLike, S: ArrayLike) -> NScoreEvaluationResult:
 
 
 
-class StateFilterEvaluationResult:
+class FilterEvaluationResult:
     def __init__(self, position_nees: NScoreEvaluationResult, velocity_nees: NScoreEvaluationResult,
                  position_nis: NScoreEvaluationResult, velocity_nis: NScoreEvaluationResult,
                  position_error: np.ndarray):
@@ -280,7 +280,7 @@ class StateFilterEvaluationResult:
 
 
 
-def evaluate_runner(runner: StateFilterRunner):
+def evaluate_runner(runner: FilterRunner):
     x_hat, P_hat, truth, v, S = runner.many_x_hat[:, :, :6, :], runner.many_P_hat[:, :, :6, :6], \
                                 runner.many_truth[:, 1:, :6], runner.many_v[:, :, :6, :], \
                                 runner.many_S[:, :, :6, :6]
@@ -304,7 +304,7 @@ def evaluate_runner(runner: StateFilterRunner):
     if len(truth.shape) == 2:
         truth = np.expand_dims(truth, 0)
 
-    return StateFilterEvaluationResult(
+    return FilterEvaluationResult(
         evaluate_nees(x_hat[:,:,:3,:], P_hat[:,:,:3,:3], truth[:, :,:3]),
         evaluate_nees(x_hat[:,:,3:,:], P_hat[:,:,3:,3:], truth[:, :,3:]),
         evaluate_nis(v[:,:,:3,:], S[:,:,:3,:3]),
@@ -313,5 +313,5 @@ def evaluate_runner(runner: StateFilterRunner):
     )
 
 
-def nees_ci(runner: StateFilterRunner, qs: List[float] = [.025, .975]):
+def nees_ci(runner: FilterRunner, qs: List[float] = [.025, .975]):
     return sp.stats.chi2.ppf(qs, runner.m * runner.dim) / runner.m
