@@ -23,8 +23,8 @@ class KalmanFilter(object):
     def predict(self, dt: float):
         raise Exception(f"predict() method not implemented in {self.__class__.__name__}")
     
-    def prepare_update(self, z: ArrayLike, R: ArrayLike):
-        raise Exception(f"prepare_update() method not implemented in {self.__class__.__name__}")
+    def calculate_innvovation(self, z: ArrayLike, R: ArrayLike):
+        raise Exception(f"calculate_innvovation() method not implemented in {self.__class__.__name__}")
 
     def update(self):
         raise Exception(f"update() method not implemented in {self.__class__.__name__}")

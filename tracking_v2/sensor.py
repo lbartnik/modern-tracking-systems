@@ -3,8 +3,18 @@ from numpy.typing import ArrayLike
 
 from .target import Target
 
+class SensorMeasurementIdGenerator(object):
+    _next_measurement_id = 1
 
-class SensorMeasurement:
+    @classmethod
+    def generate_measurement_id(cls):
+        cls._next_measurement_id += 1
+        return cls._next_measurement_id
+
+
+class SensorMeasurement(object):
+
+
     def __init__(self, target_id: int, time: float, z: ArrayLike, R: ArrayLike, error: ArrayLike):
         """Construct a sensor measurement.
 
@@ -13,6 +23,7 @@ class SensorMeasurement:
             z (ArrayLike): Measurement.
             R (ArrayLike): Measurement error covariance matrix.
         """
+        self.measurement_id = SensorMeasurementIdGenerator.generate_measurement_id()
         self.target_id = target_id
         self.time = time
         self.z = np.asarray(z)

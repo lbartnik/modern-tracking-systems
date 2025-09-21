@@ -77,8 +77,9 @@ class LinearKalmanFilter(KalmanFilter):
         self.P_hat = F @ self.P_hat @ F.T + Q
 
     # prepare state to be updated with a measurement
-    def prepare_update(self, z: ArrayLike, R: ArrayLike):
-        """Update the Kalman Filter state with a measurement.
+    def calculate_innvovation(self, z: ArrayLike, R: ArrayLike):
+        """Prepare the update of the Kalman Filter state with a measurement: calculate
+        the innovation and its covariance.
 
         Args:
             z (ArrayLike): Measurement of size M. M must match the dimensionality of the
@@ -101,9 +102,9 @@ class LinearKalmanFilter(KalmanFilter):
 
     def update(self):
         """Update the Kalman Filter state using innovation and its covariance calculated
-        in prepare_update().
+        in calculate_innvovation().
         """
-        assert self.update_prepared, "prepare_update() not called"
+        assert self.update_prepared, "calculate_innvovation() not called"
 
         # Kalman gain
         # K = P*H (H*P*H + R)^-1

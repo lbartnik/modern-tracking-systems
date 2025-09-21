@@ -2,7 +2,8 @@ import inspect
 from typing import Dict, List
 
 
-__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update', 'after_estimate', 'Runner']
+__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update', 'after_estimate', 'Runner',
+           'execute_user_callbacks']
 
 
 
@@ -71,3 +72,9 @@ class Runner:
 
     def run_many(self, m: int, n: int, T: float = 1, seeds: List[int]=None):
         raise Exception(f"run_many() method not implemented in {self.__class__.__name__}")
+
+
+def execute_user_callbacks(callback_object, stage, *args):
+    for name, member in inspect.getmembers(callback_object, inspect.ismethod):
+        if hasattr(member, 'runner_callback_tag') and member.runner_callback_tag == stage:
+            member(*args)

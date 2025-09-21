@@ -138,7 +138,7 @@ class FilterRunner(Runner):
             self.after_predict()
 
             m = self.sensor.generate_measurement(t, self.target)
-            self.kf.prepare_update(m.z, m.R)
+            self.kf.calculate_innvovation(m.z, m.R)
             self.kf.update()
 
             self.after_update(m)

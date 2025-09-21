@@ -1,16 +1,57 @@
 import numpy as np
-from typing import List
+from typing import Callable, List
 
-from .base import Runner
+from ...callback import after_one, before_many, before_one, target_cached, tracks_estimated, execute_callback
 from ...sensor import Sensor
 from ...target import Target
 from ...tracker import Tracker, Track
 
-__all__ = []
+__all__ = ['TrackerRunner', 'TrackerCallback']
 
 
-class TrackerRunner(Runner):
-    def __init__(self, targets: List[Target], sensors: List[Sensor], tracker: Tracker):
+
+class TrackerCallback:
+    def __init__(self):
+        self.one_truths = None
+        self.one_x_hat, self.one_P_hat = None, None
+        self.many_x_hat, self.many_P_hat, self.many_truths = [], [], []
+
+    @target_cached
+    def register_truth(self, target_states):
+        self.one_truths.append(target_states)
+
+    @before_one
+    def prepare_single_run(self):
+        self.one_truths = []
+        self.one_x_hat = {}
+        self.one_P_hat = {}
+
+    @after_one
+    def process_single_run(self):
+        self.one_truths = np.asarray(self.one_truths)
+        self.one_x_hat = {tid: np.asarray(updates) for tid, updates in self.one_x_hat.items()}
+        self.one_P_hat = {tid: np.asarray(updates) for tid, updates in self.one_P_hat.items()}
+
+        self.many_truths.append(self.one_truths)
+        self.many_x_hat.append(self.one_x_hat)
+        self.many_P_hat.append(self.one_P_hat)
+
+    @before_many
+    def prepare_multiple_runs(self):
+        self.many_truths = []
+        self.many_x_hat = []
+        self.many_P_hat = []
+
+    @tracks_estimated
+    def collect_track_states(self, tracks: List[Track]):
+        for track in tracks:
+            self.one_x_hat.setdefault(track.track_id, []).append(track.mean)
+            self.one_P_hat.setdefault(track.track_id, []).append(track.cov)
+
+
+
+class TrackerRunner:
+    def __init__(self, targets: List[Target], sensors: List[Sensor], tracker: Tracker, callbacks: List[Callable] = 'standard_callbacks'):
         self.tracker = tracker
         self.targets = targets
         self.sensors = sensors
@@ -19,9 +60,9 @@ class TrackerRunner(Runner):
         self.m = None
         self.seeds = None
 
-        self.one_truths = None
-        self.one_x_hat, self.one_P_hat = None, None
-        self.many_x_hat, self.many_P_hat = [], []
+        if callbacks == 'standard_callbacks':
+            callbacks = [TrackerCallback()]
+        self.callbacks = callbacks
 
         assert len(np.unique([t.target_id for t in self.targets])) == len(self.targets), "target ids not unique"
         assert len(np.unique([s.sensor_id for s in self.sensors])) == len(self.sensors), "sensor ids not unique"
@@ -31,14 +72,14 @@ class TrackerRunner(Runner):
         t = 0
         self.n = n
         
-        self.before_one()
+        for cb in self.callbacks:
+            execute_callback(cb, 'before_one')
     
         for target in self.targets:
             target.cache(T, n+1)
-        
-        for target in self.targets:
-            self.one_truths.append(target.cached_states)
-        
+            for cb in self.callbacks:
+                execute_callback(cb, 'target_cached', target.cached_states)
+                
         self.tracker.reset()
 
         for t in np.arange(1, n+1) * T:
@@ -50,10 +91,12 @@ class TrackerRunner(Runner):
                 
                 self.tracker.add_measurements(measurements)
             
-            tracks = self.tracker.estimate_tracks(t)
-            self.after_estimate(tracks)
+            for cb in self.callbacks:
+                tracks = self.tracker.estimate_tracks(t)
+                execute_callback(cb, 'tracks_estimated', tracks)
 
-        self.after_one()
+        for cb in self.callbacks:
+            execute_callback(cb, 'after_one')
     
 
     def run_many(self, m: int, n: int, T: float = 1, seeds: List[int] = None):
@@ -66,7 +109,9 @@ class TrackerRunner(Runner):
         self.m = m
         self.seeds = seeds
 
-        self.before_many()
+        for cb in self.callbacks:
+            execute_callback(cb, 'before_many')
+
         for seed in seeds:
             rng = np.random.default_rng(seed=seed)
 
@@ -77,40 +122,5 @@ class TrackerRunner(Runner):
 
             self.run_one(n, T)
         
-        self.after_many()
-
-    def before_one(self):
-        self.one_truths = []
-        self.one_x_hat = {}
-        self.one_P_hat = {}
-        self._execute_user_callbacks('before_one')
-
-    def after_one(self):
-        self.one_truths = np.asarray(self.one_truths)
-        self.one_x_hat = {tid: np.asarray(updates) for tid, updates in self.one_x_hat.items()}
-        self.one_P_hat = {tid: np.asarray(updates) for tid, updates in self.one_P_hat.items()}
-
-        self.many_truths.append(self.one_truths)
-        self.many_x_hat.append(self.one_x_hat)
-        self.many_P_hat.append(self.one_P_hat)
-
-        self._execute_user_callbacks('after_one')
-
-    def before_many(self):
-        self.many_truths = []
-        self.many_x_hat = []
-        self.many_P_hat = []
-
-        self._execute_user_callbacks('before_many')
-
-    def after_many(self):
-        self._execute_user_callbacks('after_many')
-
-    def after_estimate(self, tracks: List[Track]):
-        for track in tracks:
-            self.one_x_hat.setdefault(track.track_id, []).append(track.mean)
-            self.one_P_hat.setdefault(track.track_id, []).append(track.cov)
-
-        self._execute_user_callbacks('after_estimate', tracks)
-
-
+        for cb in self.callbacks:
+            execute_callback(cb, 'after_many')

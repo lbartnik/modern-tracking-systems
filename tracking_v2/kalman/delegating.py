@@ -49,8 +49,8 @@ class DelegatingFilter(KalmanFilter):
     def predict(self, dt: float):
         return self.delegate.predict(dt)
     
-    def prepare_update(self, z: ArrayLike, R: ArrayLike):
-        return self.delegate.prepare_update(z, R)
+    def calculate_innvovation(self, z: ArrayLike, R: ArrayLike):
+        return self.delegate.calculate_innvovation(z, R)
 
     def update(self):
         return self.delegate.update()
@@ -76,7 +76,7 @@ class GatedFilter(DelegatingFilter):
         self.delegate.reset()
 
     def update(self):
-        assert self.update_prepared, "prepare_update() not called"
+        assert self.update_prepared, "calculate_innvovation() not called"
         self.i += 1
 
         nis = self.nis()
