@@ -55,6 +55,10 @@ def track_not_updated(method):
     method.runner_callback_tag = 'track_not_updated'
     return method
 
+def mht_decisions(method):
+    method.runner_callback_tag = 'mht_decisions'
+    return method
+
 
 # associates a given object ID (first-level key) with a mapping from stage name
 # (second-level key) to a list of methods associated with that stage

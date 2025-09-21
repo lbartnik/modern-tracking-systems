@@ -89,7 +89,7 @@ class TrackerRunner:
                     m = sensor.generate_measurement(t, target)
                     measurements.append(m)
                 
-                self.tracker.add_measurements(measurements)
+                self.tracker.add_measurements(measurements, callbacks=self.callbacks)
             
             for cb in self.callbacks:
                 tracks = self.tracker.estimate_tracks(t)

@@ -10,11 +10,13 @@ __all__ = ['Tracker', 'Track']
 
 class Track(object):
     track_id: int
+    time: float
     mean: np.ndarray
     cov: np.ndarray
 
-    def __init__(self, track_id: int, mean: ArrayLike, cov: ArrayLike):
+    def __init__(self, track_id: int, time: float, mean: ArrayLike, cov: ArrayLike):
         self.track_id = track_id
+        self.time = time
         self.mean = np.asarray(mean)
         self.cov = np.asarray(cov)
 

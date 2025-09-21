@@ -14,7 +14,6 @@ class SensorMeasurementIdGenerator(object):
 
 class SensorMeasurement(object):
 
-
     def __init__(self, target_id: int, time: float, z: ArrayLike, R: ArrayLike, error: ArrayLike):
         """Construct a sensor measurement.
 
@@ -32,6 +31,9 @@ class SensorMeasurement(object):
 
         assert self.z.squeeze().shape[0] == self.R.squeeze().shape[0]
         assert self.R.squeeze().shape[0] == self.R.squeeze().shape[1]
+    
+    def __repr__(self):
+        return f"SensorMeasurement(target={self.target_id}, time={self.time})"
 
 
 class Sensor(object):

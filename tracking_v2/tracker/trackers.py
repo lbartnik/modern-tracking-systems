@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sp
 from math import log, pi
-from typing import List
+from typing import Callable, List
 
 from ..np import as_column 
 from .interface import Tracker, Track
@@ -93,30 +93,33 @@ def _initialize_velocity(m0, m1):
 
 
 
-class Track:
+class TrackHypothesis:
     def __init__(self, track_id: int, kf: KalmanFilter, time: float, llr: float):
         self.track_id = track_id
         self.kf = kf
         self.time = time
         self.llr = llr
+    
+    def __repr__(self):
+        with np.printoptions(precision=2):
+            return f"TrackHypothesis({self.track_id}, {self.time}, {round(self.llr, 2)}, {self.kf.x_hat.T.squeeze()})"
 
 
 
 class MultiTargetTracker(Tracker):
     def __init__(self):
         self.reset()
-        self.callback = None
     
     def reset(self):
         self.track_id_generator = 0
 
-        self.tracks: List[Track] = []
+        self.tracks: List[TrackHypothesis] = []
         self.unassociated_measurements = []
 
         # general LLR parameters
         self.P_d = 1  # probability of detection
-        self.B_NT = 1 # probability of new target
-        self.B_FT = 1 # probability of false target
+        self.B_NT = 1e-5 # probability of new target
+        self.B_FT = 1e-100 # probability of false target
 
         # two-point initialization LLR parameters
         self.v_max = 100
@@ -125,12 +128,15 @@ class MultiTargetTracker(Tracker):
         self.track_id_generator += 1
         return self.track_id_generator
     
-    def add_measurements(self, ms: List[SensorMeasurement]):
+    def add_measurements(self, ms: List[SensorMeasurement], callbacks: List[Callable] = None):
         if len(ms) == 0:
             return
         
         dim = len(ms[0].z.squeeze())
         assert dim == 3, "only 3D spaces are supported"
+
+        if callbacks is None:
+            callbacks = []
 
         # possible decisions:
         #   - track update with a new measurement
@@ -139,17 +145,29 @@ class MultiTargetTracker(Tracker):
         #   - an existing track does not have an update in this iteration
         decisions = []
 
+        print(self.tracks)
+
         # 1. for each new measurement
         for m in ms:
             # 1.1. score measurement against track
             for t in self.tracks:
                 # TODO consider only if passes a gate
+                if t.time < m.time:
+                    t.kf.predict(m.time - t.time)
+                    t.time = m.time
+                
+                assert t.time == m.time, "Track is ahead of measurement"
+
                 t.kf.calculate_innvovation(m.z, m.R)
                 
-                llr = log(self.P_d / self.B_FT) - dim/2*log(2*pi) - .5 * np.linalg.det(self.kf.S) \
-                        - .5 * self.kf.innovation.T @ self.kf.S @ self.kf.innovation
+                S_inv = np.linalg.inv(t.kf.S)
+                d2 = t.kf.innovation.T @ S_inv @ t.kf.innovation
                 
-                decisions.append(('associate_to_track', t.llr + llr, t, m))
+                dLLR = log(self.P_d / self.B_FT) - dim/2*log(2*pi) - .5 * np.linalg.det(t.kf.S) - .5 * d2
+                dLLR = float(dLLR)
+                print(dLLR,  log(self.P_d / self.B_FT) - dim/2*log(2*pi), float(-.5 * np.linalg.det(t.kf.S)), float(- .5 * d2))
+                
+                decisions.append(('associate_to_track', t.llr + dLLR, t, m))
 
             # 1.2. score measurement against initiating a new track, using two-point initialization
             for um in self.unassociated_measurements:
@@ -181,14 +199,14 @@ class MultiTargetTracker(Tracker):
                 log_g_z2 = -dim/2 * log(2*pi) - .5 * log(np.linalg.det(S)) - .5 * d2
                 dLLR = log(self.P_d) - log(self.B_FT) + log_g_z2
 
-                LLR_2 = LLR_1 + dLLR
+                LLR_2 = float(LLR_1 + dLLR.squeeze())
 
                 x, P = _initialize_velocity(um, m)
                 kf = linear_ncv(noise_intensity=1)
                 kf.initialize(x, P)
 
                 # TODO here LLR can be recomputed without P_vv
-                t = Track(self.next_track_id(), kf, m.time, LLR_2)
+                t = TrackHypothesis(self.next_track_id(), kf, m.time, LLR_2)
                 decisions.append(('initialize_new_track', LLR_2, t, um, m))
 
 
@@ -213,6 +231,9 @@ class MultiTargetTracker(Tracker):
         new_unassociated_measurements = []
         decided_measurement_ids = set()
 
+        for cb in callbacks:
+            execute_callback(cb, 'mht_decisions', decisions)
+
         for d in decisions:
             if d[0] == 'associate_to_track':
                 _, llr, t, m = d
@@ -222,14 +243,18 @@ class MultiTargetTracker(Tracker):
                 if m.measurement_id in decided_measurement_ids:
                     continue
 
+                # TODO make sure that timestamps match
+
                 t.kf.calculate_innvovation(m.z, m.R)
                 t.kf.update()
+                t.llr = llr
+
                 new_tracks.append(t)
                 new_track_ids.add(t.track_id)
                 decided_measurement_ids.add(m.measurement_id)
 
-                if self.callback is not None:
-                    execute_callback(self.callback, 'associated_to_track', llr, t, m)
+                for cb in callbacks:
+                    execute_callback(cb, 'associated_to_track', llr, t, m)
 
             # TODO maybe allow initializing new tracks from pairs of measurements with one or more
             #      measurements missing in between them? (gaps)
@@ -243,8 +268,8 @@ class MultiTargetTracker(Tracker):
                 new_track_ids.add(t.track_id)
                 decided_measurement_ids.add(m.measurement_id)
 
-                if self.callback is not None:
-                    execute_callback(self.callback, 'initialized_new_track', llr, t, m0, m1)
+                for cb in callbacks:
+                    execute_callback(cb, 'initialized_new_track', llr, t, m0, m1)
 
             elif d[0] == 'measurement_not_associated':
                 _, llr, m = d
@@ -255,8 +280,8 @@ class MultiTargetTracker(Tracker):
                 new_unassociated_measurements.append(m)
                 decided_measurement_ids.add(m.measurement_id)
 
-                if self.callback is not None:
-                    execute_callback(self.callback, 'measurement_not_associated', llr, m)
+                for cb in callbacks:
+                    execute_callback(cb, 'measurement_not_associated', llr, m)
 
             elif d[0] == 'track_not_updated':
                 _, llr, t = d
@@ -268,16 +293,20 @@ class MultiTargetTracker(Tracker):
                 new_tracks.append(t)
                 new_track_ids.add(t.track_id)
 
-                if self.callback is not None:
-                    execute_callback(self.callback, 'track_not_updated', llr, t)
+                for cb in callbacks:
+                    execute_callback(cb, 'track_not_updated', llr, t)
+            
+            else:
+                raise Exception(f"Unknown decision '{d[0]}'")
 
 
         # 3. replace previous set of unassociated measurements: they either already produced
         #    a track or are considered false detections
         self.unassociated_measurements = new_unassociated_measurements
+        self.tracks = new_tracks
 
 
 
     def estimate_tracks(self, t: float):
-        return [Track(t.track_id, t.kf.x_hat, t.kf.P_hat) for t in self.tracks]
+        return [Track(t.track_id, t, t.kf.x_hat, t.kf.P_hat) for t in self.tracks]
 
