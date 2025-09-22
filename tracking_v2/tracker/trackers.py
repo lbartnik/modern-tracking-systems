@@ -138,14 +138,13 @@ class MultiTargetTracker(Tracker):
         if callbacks is None:
             callbacks = []
 
-        # possible decisions:
+        # possible decisions (mutually exclusive only if concerning the same track or measurement):
         #   - track update with a new measurement
         #   - new track from a previously unassociated measurement and a new measurement
         #   - new measurement is left unassociated
         #   - an existing track does not have an update in this iteration
+        #   - old measurement is false
         decisions = []
-
-        print(self.tracks)
 
         # 1. for each new measurement
         for m in ms:
@@ -165,7 +164,6 @@ class MultiTargetTracker(Tracker):
                 
                 dLLR = log(self.P_d / self.B_FT) - dim/2*log(2*pi) - .5 * np.linalg.det(t.kf.S) - .5 * d2
                 dLLR = float(dLLR)
-                print(dLLR,  log(self.P_d / self.B_FT) - dim/2*log(2*pi), float(-.5 * np.linalg.det(t.kf.S)), float(- .5 * d2))
                 
                 decisions.append(('associate_to_track', t.llr + dLLR, t, m))
 
@@ -186,10 +184,10 @@ class MultiTargetTracker(Tracker):
                 if np.linalg.norm(v) > self.v_max * dt:
                     continue
 
+                # Chi-squared gate
                 d2 = v.T @ np.linalg.inv(S) @ v
                 G = float(sp.stats.chi2.ppf(.95, dim))
 
-                # Chi-squared gate
                 if d2 > G:
                     continue
 
@@ -223,16 +221,20 @@ class MultiTargetTracker(Tracker):
         for t in self.tracks:
             decisions.append(('track_not_updated', t.llr + dLLR, t))
         
+        # TODO one more option: previous measurement is a false measurement, so we do
+        #      not initialize a new track but keep the new measurement for the next
+        #      iteration
+        
         # sort with LLR descending
         decisions.sort(key=lambda x: x[1], reverse=True)
+
+        for cb in callbacks:
+            execute_callback(cb, 'mht_decisions', self, decisions)
 
         new_tracks = []
         new_track_ids = set()
         new_unassociated_measurements = []
         decided_measurement_ids = set()
-
-        for cb in callbacks:
-            execute_callback(cb, 'mht_decisions', decisions)
 
         for d in decisions:
             if d[0] == 'associate_to_track':
@@ -254,7 +256,7 @@ class MultiTargetTracker(Tracker):
                 decided_measurement_ids.add(m.measurement_id)
 
                 for cb in callbacks:
-                    execute_callback(cb, 'associated_to_track', llr, t, m)
+                    execute_callback(cb, 'associated_to_track', self, llr, t, m)
 
             # TODO maybe allow initializing new tracks from pairs of measurements with one or more
             #      measurements missing in between them? (gaps)
@@ -269,7 +271,7 @@ class MultiTargetTracker(Tracker):
                 decided_measurement_ids.add(m.measurement_id)
 
                 for cb in callbacks:
-                    execute_callback(cb, 'initialized_new_track', llr, t, m0, m1)
+                    execute_callback(cb, 'initialized_new_track', self, llr, t, m0, m1)
 
             elif d[0] == 'measurement_not_associated':
                 _, llr, m = d
@@ -281,7 +283,7 @@ class MultiTargetTracker(Tracker):
                 decided_measurement_ids.add(m.measurement_id)
 
                 for cb in callbacks:
-                    execute_callback(cb, 'measurement_not_associated', llr, m)
+                    execute_callback(cb, 'measurement_not_associated', self, llr, m)
 
             elif d[0] == 'track_not_updated':
                 _, llr, t = d
@@ -294,7 +296,7 @@ class MultiTargetTracker(Tracker):
                 new_track_ids.add(t.track_id)
 
                 for cb in callbacks:
-                    execute_callback(cb, 'track_not_updated', llr, t)
+                    execute_callback(cb, 'track_not_updated', self, llr, t)
             
             else:
                 raise Exception(f"Unknown decision '{d[0]}'")

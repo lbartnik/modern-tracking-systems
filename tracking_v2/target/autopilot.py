@@ -1,12 +1,11 @@
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import List, Union
-import plotly.express as ex
 import plotly.graph_objects as go
 from copy import deepcopy
 
 from .target import Target
-from ..util import to_df, display
+from ..util import to_df
 
 
 __all__ = ['AutopilotTarget', 'Straight', 'Turn']
@@ -355,7 +354,7 @@ def _project_on_segment(position: ArrayLike, segment: Union[Straight, Turn], del
         direction /= np.linalg.norm(direction)
 
         # find the angle alpha on the arc closest to the current position of the mover
-        alpha = np.atan2(direction[1], direction[0]) 
+        alpha = np.arctan2(direction[1], direction[0]) 
 
         # where were we before this update?
         previous_alpha = segment.alpha0 + segment.progress * (segment.alpha1 - segment.alpha0)

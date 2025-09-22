@@ -18,9 +18,10 @@ class SensorMeasurement(object):
         """Construct a sensor measurement.
 
         Args:
-            time (float): Time of the measurement.
-            z (ArrayLike): Measurement.
-            R (ArrayLike): Measurement error covariance matrix.
+            target_id (int): True target identifier.
+            time (float):    Time of the measurement.
+            z (ArrayLike):   Measurement.
+            R (ArrayLike):   Measurement error covariance matrix.
         """
         self.measurement_id = SensorMeasurementIdGenerator.generate_measurement_id()
         self.target_id = target_id

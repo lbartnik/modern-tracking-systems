@@ -1,6 +1,6 @@
 import numpy as np
 import scipy as sp
-from typing import List
+from typing import Dict, List
 from numpy.typing import ArrayLike
 import pandas as pd
 
@@ -11,11 +11,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .stonesoup import AnimatedPlotterly
-from .runner.state import NScoreEvaluationResult, Runner, FilterRunner, evaluate_runner
-from ..util import SubFigure, to_df, colorscale
+from .runner.state import NScoreEvaluationResult, FilterRunner, evaluate_runner
+from ..util import SubFigure, to_df, colorscale, display
 
 
-__all__ = ['plot_nscore', 'plot_error', 'plot_2d', 'plot_3d', 'plot_runs', 'plot_track']
+__all__ = ['plot_nscore', 'plot_error', 'plot_2d', 'plot_3d', 'plot_runs', 'plot_track', 'plot_error_vs_nees']
 
 
 def plot_error(runner, skip=0, run=0):
@@ -198,7 +198,7 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
 
 
     fig.update_layout(title=title, height=700)
-    return fig
+    return display(fig)
 
 
 def plot_runs(nees: NScoreEvaluationResult, n: int=None, title: str = None, skip: int=25) -> go.Figure:
@@ -221,28 +221,21 @@ def plot_runs(nees: NScoreEvaluationResult, n: int=None, title: str = None, skip
         fig.add_trace(go.Scatter(x=x, y=scores[i,:],  name=f'run {i}', mode='lines', line=dict(width=.4), opacity=0.5))
 
     fig.update_layout(title=title, height=700)
-    return fig
+    return display(fig)
 
 
-class Tagged:
-    def __init__(self, runner: Runner, tags: dict):
-        self.runner = runner
-        self.tags = tags
 
+def plot_error_vs_nees(runners: List[FilterRunner], tags: List[Dict], x: str = None, facet_row: str = None):
 
-def tag(runner: Runner, **kwargs):
-    return Tagged(runner, kwargs)
+    for r in runners:
+        assert r.m == runners[0].m, "All runners must have the same number of MC trials"
 
-
-def plot_error_vs_nees(*tagged: List[Tagged], x: str = None, facet_row: str = None):
-
-    for t in tagged:
-        assert isinstance(t, Tagged), "Each input must be a tagged Runner"
-        assert t.tags.keys() == tagged[0].tags.keys(), "All runners must have the same set of tags"
+    for t in tags:
+        assert t.keys() == tags[0].keys(), "All tag sets must have the same set of names"
     
     parts = []
-    for t in tagged:
-        e = evaluate_runner(t.runner)
+    for r, t in zip(runners, tags):
+        e = evaluate_runner(r)
         
         nees = e.position_nees.scores.mean(axis=0)
         err = e.position_error.mean(axis=0)
@@ -250,7 +243,7 @@ def plot_error_vs_nees(*tagged: List[Tagged], x: str = None, facet_row: str = No
         part = np.asarray((nees, err)).T
         part = to_df(part, columns=['nees', 'err'])
 
-        for name, value in t.tags.items():
+        for name, value in t.items():
             part[name] = value
         
         parts.append(part)
@@ -263,7 +256,15 @@ def plot_error_vs_nees(*tagged: List[Tagged], x: str = None, facet_row: str = No
     data = data.melt(id_vars, ['nees', 'err'], 'metric', 'value')
 
     fig = ex.box(data, x=x, y='value', color='metric', facet_row=facet_row)
-    return fig
+
+    conf_int = sp.stats.chi2.ppf([0.025, 0.975], 3 * runners[0].m) / runners[0].m
+    fig.add_hline(y=conf_int[0], line_width=.5, line_dash="dash", line_color="red")
+    fig.add_hline(y=conf_int[1], line_width=.5, line_dash="dash", line_color="red")
+
+    fig.add_trace(go.Scatter(x=[0], y=[0], mode='lines', line=dict(color="red", dash="dash"), name='2.5% CI',
+        showlegend=True, visible='legendonly'))
+
+    return display(fig)
 
 
 class StoneSoupState:
