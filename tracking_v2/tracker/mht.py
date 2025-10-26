@@ -50,11 +50,12 @@ class MaybeNewTrack(object):
 
 # decisions.append(('associate_to_track', t.llr + dLLR, t, m))
 class UpdateTrack(object):
-    def __init__(self, track: TrackHypothesis, measurement: SensorMeasurement, dLLR: float):
+    def __init__(self, track: TrackHypothesis, measurement: SensorMeasurement, dLLR: float, NIS: float):
         self.track = track
         self.measurement = measurement
-        self.dLLR = dLLR
-        self.LLR = track.llr + dLLR
+        self.dLLR = float(dLLR)
+        self.LLR = float(track.llr + dLLR)
+        self.NIS = float(NIS)
     
     def __repr__(self):
         return f"UpdateTrack({round(self.LLR, 2)}, {self.track.track_id}({self.track.target_id}), {self.measurement.measurement_id}({self.measurement.target_id}))"
@@ -130,7 +131,7 @@ class MultiTargetTracker(Tracker):
                 dLLR = log(self.P_d / self.B_FT) - dim/2*log(2*pi) - .5 * log(np.linalg.det(t.kf.S)) - .5 * d2
                 dLLR = float(dLLR)
                 
-                d = UpdateTrack(t, m, dLLR)
+                d = UpdateTrack(t, m, dLLR, NIS=d2)
                 decisions.append(d)
 
                 _execute_callbacks(callbacks, 'consider_update_track', self, d)

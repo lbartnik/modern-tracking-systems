@@ -80,7 +80,7 @@ class TrackerRunner:
         self._execute_callbacks('before_one')
     
         for target in self.targets:
-            target.cache(T, n+1)
+            target.cache(T, n)
             self._execute_callbacks('target_cached', target)
                 
         self.tracker.reset()

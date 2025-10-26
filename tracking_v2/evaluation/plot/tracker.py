@@ -1,7 +1,8 @@
 import numpy as np
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import plotly.graph_objects as go
+from ipywidgets import widgets
 
 import tracking_v2.callback as cb
 import tracking_v2.tracker.mht as mht
@@ -18,6 +19,11 @@ class MhtInspectCallback:
         self.targets: Dict[int, Target] = {}
         self.measurements: Dict[int, Union[List, np.ndarray]] = {}
         self.tracks: Dict[int, Union[List[np.ndarray], np.ndarray]] = {}
+
+        # update_to_meas: track id -> time -> (used, considered)
+        # used, considered: [mht.UpdateTrack]
+        self.update_to_meas: Dict[int, Dict[float, Tuple[List[mht.UpdateTrack],
+                                                         List[mht.UpdateTrack]]]] = {}
 
     @cb.target_cached
     def target_cached(self, target: Target):
@@ -36,10 +42,21 @@ class MhtInspectCallback:
         for tr in tracks:
             self.tracks.setdefault(tr.track_id, []).append(np.concatenate(([time], tr.mean.squeeze())))
 
+    @cb.consider_update_track
+    def consider_update_track(self, tracker, d: mht.UpdateTrack):
+        _, considred = self.update_to_meas.setdefault(d.track.track_id, {}).setdefault(d.track.time, ([], []))
+        considred.append(d)
+
+    @cb.update_track
+    def update_track(self, tracker, d: mht.UpdateTrack):
+        used, _ = self.update_to_meas.setdefault(d.track.track_id, {}).setdefault(d.track.time, ([], []))
+        used.append(d)
+
     @cb.after_one
     def create_arrays(self):
-        self.measurements = {target_id: np.asarray(data) for target_id, data in self.measurements.items()}
-        self.tracks = {track_id: np.asarray(data).squeeze() for track_id, data in self.tracks.items()}
+        self.measurements = {target_id: np.asarray(data, dtype=np.float64) for target_id, data in self.measurements.items()}
+        self.tracks = {track_id: np.asarray(data, dtype=np.float64).squeeze() for track_id, data in self.tracks.items()}
+        self.time = np.asarray(self.time, dtype=np.float64)
 
         # TODO after a single run, make sure that timestamps are aligned across all collected datasets
 
@@ -64,22 +81,27 @@ class MinMax3D:
         return self.m - margin, self.M + margin
 
 
-
+# at every step
+#  1. plot target
+#  2. measurement
+#  3. plot all finalized decisions
+#  4. plot all potential decisions
 def plot_mht(cb: MhtInspectCallback, animate: bool = True, lag: int = 5):
     tm = np.asarray(cb.time)
 
+    target_ids = list([str(i) for i in cb.targets.keys()])
+    measurement_ids = [f"m{target_id}" for target_id in cb.targets.keys()]
+    track_ids = [f"tr{track_id}" for track_id in cb.tracks.keys()]
+    ids = target_ids + measurement_ids + track_ids + ['decision_confirmed', 'decisions_considered']
 
-    ids = list(cb.targets.keys())
-    ids.extend([f"m{target_id}" for target_id in cb.targets.keys()])
-    ids.extend([f"tr{track_id}" for track_id in cb.tracks.keys()])
+    trace_ids = {}
 
     colors = colorscale(ids)
 
-    trace_count_base = len(cb.targets)
-    trace_ids = {_id: _count + trace_count_base for _count, _id in enumerate(ids)}
-
-
-    fig = go.Figure()
+    if animate:
+        fig = go.FigureWidget()
+    else:
+        fig = go.Figure()
 
     # line trajectories of all targets
     for target in cb.targets.values():
@@ -88,19 +110,21 @@ def plot_mht(cb: MhtInspectCallback, animate: bool = True, lag: int = 5):
             y=target.cached_states[:, 1],
             z=target.cached_states[:, 2],
             mode='lines',
-            line=dict(width=2, color=colors[target.target_id]),
+            line=dict(width=2, color=colors[str(target.target_id)]),
             name=f"target {target.target_id}",
             legendgroup=f"t{target.target_id}",
             showlegend=True
         ))
     
     for target in cb.targets.values():
+        trace_ids[str(target.target_id)] = len(fig.data)
+
         fig.add_trace(go.Scatter3d(
             x=target.cached_states[:, 0],
             y=target.cached_states[:, 1],
             z=target.cached_states[:, 2],
             mode='markers',
-            marker=dict(size=2, color=colors[target.target_id]),
+            marker=dict(size=2, color=colors[str(target.target_id)]),
             legendgroup=f"t{target.target_id}",
             showlegend=False,
             meta=target.cached_time,
@@ -110,6 +134,8 @@ def plot_mht(cb: MhtInspectCallback, animate: bool = True, lag: int = 5):
         ))
 
     for target_id, measurements in cb.measurements.items():
+        trace_ids[f"m{target_id}"] = len(fig.data)
+
         fig.add_trace(go.Scatter3d(
             x=measurements[:, 1],
             y=measurements[:, 2],
@@ -120,12 +146,14 @@ def plot_mht(cb: MhtInspectCallback, animate: bool = True, lag: int = 5):
             name=f"measurements {target_id}",
             showlegend=True,
             meta=measurements[:, 0],
-            hovertemplate='Measurement' +
-                        '<br>(%{x}, %{y}, %{z})' +
-                        '<br>Time: %{meta}'
+            hovertemplate=f'Measurement {target_id}' +
+                          '<br>(%{x}, %{y}, %{z})' +
+                          '<br>Time: %{meta}'
         ))
 
     for track_id, updates in cb.tracks.items():
+        trace_ids[f"tr{track_id}"] = len(fig.data)
+
         fig.add_trace(go.Scatter3d(
             x=updates[:, 1],
             y=updates[:, 2],
@@ -141,79 +169,11 @@ def plot_mht(cb: MhtInspectCallback, animate: bool = True, lag: int = 5):
                         '<br>Time: %{meta}'
         ))
 
+    trace_ids['decision_confirmed'] = len(fig.data)
+    fig.add_trace(go.Scatter3d(x=[], y=[], z=[], mode='lines', marker_color=colors['decision_confirmed']))
 
-    if animate:
-        frames = []
-
-        for ts in np.lib.stride_tricks.sliding_window_view(tm, lag):
-            data, traces = [], []
-
-            for target in cb.targets.values():
-                i = np.isin(target.cached_time, ts)
-                data.append(go.Scatter3d(
-                    x=target.cached_states[i, 0],
-                    y=target.cached_states[i, 1],
-                    z=target.cached_states[i, 2],
-                ))
-                traces.append(trace_ids[target.target_id])
-
-
-            for target_id, measurements in cb.measurements.items():
-                i = np.isin(measurements[:, 0], ts)
-                data.append(go.Scatter3d(
-                    x=measurements[i, 1],
-                    y=measurements[i, 2],
-                    z=measurements[i, 3],
-                ))
-                traces.append(trace_ids[f"m{target_id}"])
-            
-            for track_id, updates in cb.tracks.items():
-                i = np.isin(updates[:, 0], ts)
-                data.append(go.Scatter3d(
-                    x=updates[i, 1],
-                    y=updates[i, 2],
-                    z=updates[i, 3]
-                ))
-                traces.append(trace_ids[f"tr{track_id}"])
-
-            frames.append(go.Frame(name=str(ts[-1]), data=data, traces=traces))
-        
-        fig.update(frames=frames)
-
-
-        frame_duration = 1000
-        updatemenus = [dict(type='buttons',
-                            buttons=[{
-                                "args": [None,
-                                         {"frame": {"duration": frame_duration, "redraw": True},
-                                          "fromcurrent": True, "transition": {"duration": 0}}],
-                                "label": "Play",
-                                "method": "animate"
-                            }, {
-                                "args": [[None], {"frame": {"duration": 0, "redraw": True},
-                                                  "mode": "immediate",
-                                                  "transition": {"duration": 0}}],
-                                "label": "Stop",
-                                "method": "animate"
-                            }],
-                            direction='left',
-                            pad=dict(r=10, t=75),
-                            showactive=True, x=0.1, y=0, xanchor='right', yanchor='top')
-                       ]
-        sliders = [{'yanchor': 'top',
-                    'xanchor': 'left',
-                    'currentvalue': {'font': {'size': 16}, 'prefix': 'Time: ', 'visible': True,
-                                     'xanchor': 'right'},
-                    'transition': {'duration': 0},
-                    'pad': {'b': 10, 't': 50},
-                    'len': 0.9, 'x': 0.1, 'y': 0,
-                    'steps': [{'args': [[frame.name], {
-                        'frame': {'duration': 0, 'redraw': True},
-                        'transition': {'duration': 0}}],
-                               'label': frame.name,
-                               'method': 'animate'} for frame in frames]
-                   }]
-        fig.update_layout(updatemenus=updatemenus, sliders=sliders)
+    trace_ids['decisions_considered'] = len(fig.data)
+    fig.add_trace(go.Scatter3d(x=[], y=[], z=[], mode='lines', line_dash="dash", marker_color=colors['decisions_considered']))
 
 
     lim = MinMax3D()
@@ -226,20 +186,149 @@ def plot_mht(cb: MhtInspectCallback, animate: bool = True, lag: int = 5):
     m, M = lim.padded()
 
 
-    fig.update_layout(width=1000, height=800,
+    fig.update_layout(width=700, height=600,
         scene=dict(
             xaxis=dict(range=[m[0], M[0]], autorange=False, zeroline=False),
             yaxis=dict(range=[m[1], M[1]], autorange=False, zeroline=False),
             zaxis=dict(range=[m[2], M[2]], autorange=False, zeroline=False)
+        ),
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",  # Optional: make the legend horizontal
+            yanchor="top",    # Anchor the legend to its top edge
+            y=-0.2,           # Position the legend below the plot area (adjust as needed)
+            xanchor="left",   # Anchor the legend to its left edge
+            x=0               # Position the legend starting from the left
         )
     )
 
+    # map from trace ID back to target/measurement/track ID
+    reverse_trace_ids = {plotly_id: string_id for string_id, plotly_id in trace_ids.items()}
 
 
-    # at every step
-    #  1. plot target
-    #  2. measurement
-    #  3. plot all finalized decisions
-    #  4. plot all potential decisions
+    if not animate:
+        return fig
+    
+    time_slider = widgets.IntSlider(
+        value=int(lag),
+        min=int(lag),
+        max=int(tm.max()),
+        step=1,
+        description='Time',
+        continuous_update=False
+    )
+    fwd = widgets.Button(description=">")
+    rew = widgets.Button(description="<")
+    text = widgets.Textarea(disabled=True, layout=widgets.Layout(width='400px', height='600px'))
 
-    return go.FigureWidget(fig)
+
+    def update_plot(change):
+        end_time = time_slider.value
+        ts = np.arange(np.max([0, end_time - lag]), end_time+1)
+
+        with fig.batch_update():
+            for target in cb.targets.values():
+                i = trace_ids[str(target.target_id)]
+                j = np.isin(target.cached_time, ts)
+                
+                fig.data[i].x = target.cached_states[j, 0]
+                fig.data[i].y = target.cached_states[j, 1]
+                fig.data[i].z = target.cached_states[j, 2]
+
+
+            for target_id, measurements in cb.measurements.items():
+                i = trace_ids[f"m{target_id}"]
+                j = np.isin(measurements[:, 0], ts)
+
+                fig.data[i].x = measurements[j, 1]
+                fig.data[i].y = measurements[j, 2]
+                fig.data[i].z = measurements[j, 3]
+            
+            for track_id, updates in cb.tracks.items():
+                i = trace_ids[f"tr{track_id}"]
+                j = np.isin(updates[:, 0], ts)
+
+                fig.data[i].x = updates[j, 1]
+                fig.data[i].y = updates[j, 2]
+                fig.data[i].z = updates[j, 3]
+    
+    def forward_time(k):
+        time_slider.value = time_slider.value + 1
+        update_plot(None)
+    
+    def rewind_time(k):
+        time_slider.value = time_slider.value - 1
+        update_plot(None)
+    
+    def explain_measurement(trace, points, state):
+        if not len(points.point_inds):
+            return
+        
+        trace_symbol = reverse_trace_ids[points.trace_index]
+        assert trace_symbol.startswith('m')
+
+    def explain_track_update(trace, points, state):
+        if not len(points.point_inds):
+            return
+                    
+        trace_symbol = reverse_trace_ids[points.trace_index]
+        assert trace_symbol.startswith('tr')
+        
+        track_id = int(trace_symbol[2:])
+        j = points.point_inds[0]
+        tm = trace.meta[j]
+
+        used, considered = cb.update_to_meas.get(track_id, {}).get(tm, ([], []))
+
+        with fig.batch_update():
+            x, y, z = [], [], []
+            for d in used:
+                x.extend([float(trace.x[j]), float(d.measurement.z[0,0]), None])
+                y.extend([float(trace.y[j]), float(d.measurement.z[0,1]), None])
+                z.extend([float(trace.z[j]), float(d.measurement.z[0,2]), None])
+            
+            i = trace_ids['decision_confirmed']
+            fig.data[i].x, fig.data[i].y, fig.data[i].z = x, y, z
+            
+
+            x, y, z = [], [], []
+            for d in considered:
+                x.extend([float(trace.x[j]), float(d.measurement.z[0,0]), None])
+                y.extend([float(trace.y[j]), float(d.measurement.z[0,1]), None])
+                z.extend([float(trace.z[j]), float(d.measurement.z[0,2]), None])
+            
+            i = trace_ids['decisions_considered']
+            fig.data[i].x, fig.data[i].y, fig.data[i].z = x, y, z
+
+        with np.printoptions(precision=2, floatmode="fixed"):
+            i = cb.tracks[track_id][:, 0] == tm
+            s = cb.tracks[track_id][i, 1:].squeeze()
+            description = f"pos: {s[:3]}\nvel: {s[3:]}\n\n"
+
+            description += "used: (z, NIS, LLR)\n"
+            for d in used:
+                description += f"{d.measurement.z.squeeze()}: {d.NIS:.2f} {d.LLR:.2f}\n"
+            
+            description += "\nconsidered: (z, NIS, LLR)\n"
+            for d in considered:
+                description += f"{d.measurement.z.squeeze()}: {d.NIS:.2f} {d.LLR:.2f}\n"
+
+        text.value = description
+        
+        
+
+            
+    time_slider.observe(update_plot, names="value")
+    fwd.on_click(forward_time)
+    rew.on_click(rewind_time)
+    
+    for i in measurement_ids:
+        fig.data[trace_ids[i]].on_click(explain_measurement)
+    for i in track_ids:
+        fig.data[trace_ids[i]].on_click(explain_track_update)
+
+    return widgets.HBox([
+        widgets.VBox([fig, widgets.HBox([time_slider, rew, fwd])]),
+        text
+    ])
+
