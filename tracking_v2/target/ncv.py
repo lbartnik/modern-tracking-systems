@@ -1,8 +1,8 @@
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import List, Union
+from typing import Union
 
-from .target import Target
+from .target import Target, TargetIdGenerator
 
 
 __all__ = ['NearConstantVelocityTarget']
@@ -14,8 +14,9 @@ class NearConstantVelocityTarget(Target):
     
     Described in "Estimation with Applications to Tracking and Navigation", pp. 269-270."""
 
-    def __init__(self, speed: float = 30, initial_position: ArrayLike = [0, 0, 0], noise_intensity: float = 0,
-                 seed: int = None, report: str = "position+velocity", integration_steps_count: int = 100):
+    def __init__(self, velocity: Union[float, ArrayLike] = 30, initial_position: ArrayLike = [0, 0, 0],
+                 noise_intensity: float = 0, seed: int = None, report: str = "position+velocity",
+                 integration_steps_count: int = 100):
         """Initialize target generator.
 
         The random seed defaults to `None` which means that each generation of target
@@ -34,7 +35,7 @@ class NearConstantVelocityTarget(Target):
         out of the predicted confidence interval.
 
         Args:
-            speed (float, optional): Linear velocity, in m/s. Defaults to 30.
+            velocity (float|ArrayLike, optional): Speed or velocity vector, in m/s. Defaults to 30.
             initial_position (ArrayLike): Initial position of the target.
             noise_intensity (float): Noise intensity. Physical unit is [length]^2 / [time]^3
             seed (int): Seed for random generator (used when noise intensity is non-zero).
@@ -42,9 +43,12 @@ class NearConstantVelocityTarget(Target):
             integration_steps_count (int): Approximate the continuous-time white-noise acceleration by
                 integrating over this many steps.
         """
-        self.target_id = 0
-        self.speed = float(speed)
-        self.velocity = np.array([1, 0, 0]) # velocity direction, unit vector
+        if isinstance(velocity, (int, float)):
+            self.velocity = np.array([1, 0, 0]) * float(velocity)
+        else:
+            self.velocity =  np.asarray(velocity)
+
+        self.target_id = TargetIdGenerator.generate_target_id()
         self.spatial_dim = 3
         self.initial_position = np.array(initial_position)
         self.reset_seed(seed)
@@ -84,7 +88,7 @@ class NearConstantVelocityTarget(Target):
         """
         states = []
         current_pos = self.initial_position
-        vel = self.velocity * self.speed
+        vel = self.velocity
 
         if isinstance(T, (int, float)):
             tm = np.arange(0, n) * T

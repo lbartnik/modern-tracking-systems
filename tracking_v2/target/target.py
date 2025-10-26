@@ -6,8 +6,18 @@ from typing import List, Union
 __all__ = ['Target']
 
 
+class TargetIdGenerator(object):
+    _next_measurement_id = 1
+
+    @classmethod
+    def generate_target_id(cls):
+        cls._next_measurement_id += 1
+        return cls._next_measurement_id
+
+
+
 class Target(object):
-    target_id: int = 1
+    target_id: int = TargetIdGenerator.generate_target_id()
     name: str
     spatial_dim: int
     seed: int

@@ -43,15 +43,13 @@ class TrackerCallback:
         self.many_P_hat = []
 
     @tracks_estimated
-    def collect_track_states(self, tracks: List[Track]):
+    def collect_track_states(self, time: float, tracks: List[Track]):
         for track in tracks:
             self.one_x_hat.setdefault(track.track_id, []).append(track.mean)
             self.one_P_hat.setdefault(track.track_id, []).append(track.cov)
 
-
-
 class TrackerRunner:
-    def __init__(self, targets: List[Target], sensors: List[Sensor], tracker: Tracker, callbacks: List[Callable] = 'standard_callbacks'):
+    def __init__(self, targets: List[Target], sensors: List[Sensor], tracker: Tracker, callbacks: List[Callable] = None):
         self.tracker = tracker
         self.targets = targets
         self.sensors = sensors
@@ -60,43 +58,47 @@ class TrackerRunner:
         self.m = None
         self.seeds = None
 
-        if callbacks == 'standard_callbacks':
-            callbacks = [TrackerCallback()]
         self.callbacks = callbacks
+        self.trace = TrackerCallback()
 
         assert len(np.unique([t.target_id for t in self.targets])) == len(self.targets), "target ids not unique"
         assert len(np.unique([s.sensor_id for s in self.sensors])) == len(self.sensors), "sensor ids not unique"
 
     
+    def _execute_callbacks(self, stage: str, *args):
+        if self.callbacks is not None:
+            for cb in self.callbacks:
+                execute_callback(cb, stage, *args)
+        
+        execute_callback(self.trace, stage, *args)
+
+
     def run_one(self, n: int, T: float = 1):
         t = 0
         self.n = n
         
-        for cb in self.callbacks:
-            execute_callback(cb, 'before_one')
+        self._execute_callbacks('before_one')
     
         for target in self.targets:
             target.cache(T, n+1)
-            for cb in self.callbacks:
-                execute_callback(cb, 'target_cached', target.cached_states)
+            self._execute_callbacks('target_cached', target)
                 
         self.tracker.reset()
 
-        for t in np.arange(1, n+1) * T:
+        for t in np.arange(0, n) * T:
             for sensor in self.sensors:
                 measurements = []
                 for target in self.targets:
                     m = sensor.generate_measurement(t, target)
                     measurements.append(m)
                 
+                self._execute_callbacks('measurement_frame', t, measurements)
                 self.tracker.add_measurements(measurements, callbacks=self.callbacks)
             
-            for cb in self.callbacks:
-                tracks = self.tracker.estimate_tracks(t)
-                execute_callback(cb, 'tracks_estimated', tracks)
+            tracks = self.tracker.estimate_tracks(t)
+            self._execute_callbacks('tracks_estimated', t, tracks)
 
-        for cb in self.callbacks:
-            execute_callback(cb, 'after_one')
+        self._execute_callbacks('after_one')
     
 
     def run_many(self, m: int, n: int, T: float = 1, seeds: List[int] = None):
@@ -109,8 +111,7 @@ class TrackerRunner:
         self.m = m
         self.seeds = seeds
 
-        for cb in self.callbacks:
-            execute_callback(cb, 'before_many')
+        self._execute_callbacks('before_many')
 
         for seed in seeds:
             rng = np.random.default_rng(seed=seed)
@@ -122,5 +123,4 @@ class TrackerRunner:
 
             self.run_one(n, T)
         
-        for cb in self.callbacks:
-            execute_callback(cb, 'after_many')
+        self._execute_callbacks('after_many')

@@ -31,23 +31,48 @@ def target_cached(method):
     return method
 
 
+def measurement_frame(method):
+    method.runner_callback_tag = 'measurement_frame'
+    return method
+
+
 def tracks_estimated(method):
     method.runner_callback_tag = 'tracks_estimated'
     return method
 
 
-def associated_to_track(method):
-    method.runner_callback_tag = 'associated_to_track'
+def consider_initialize_track(method):
+    method.runner_callback_tag = 'consider_initialize_track'
     return method
 
 
-def initialized_new_track(method):
-    method.runner_callback_tag = 'initialized_new_track'
+def consider_update_track(method):
+    method.runner_callback_tag = 'consider_update_track'
     return method
 
 
-def measurement_not_associated(method):
-    method.runner_callback_tag = 'measurement_not_associated'
+def consider_maybe_new_track(method):
+    method.runner_callback_tag = 'consider_maybe_new_track'
+    return method
+
+
+def consider_track_not_updated(method):
+    method.runner_callback_tag = 'consider_track_not_updated'
+    return method
+
+
+def initialize_track(method):
+    method.runner_callback_tag = 'initialize_track'
+    return method
+
+
+def update_track(method):
+    method.runner_callback_tag = 'update_track'
+    return method
+
+
+def maybe_new_track(method):
+    method.runner_callback_tag = 'maybe_new_track'
     return method
 
 
