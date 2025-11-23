@@ -43,6 +43,8 @@ class Sensor(object):
     def generate_measurement(self, t: float, target: Target) -> SensorMeasurement:
        raise Exception(f"generate_measurement() method not implemented in {self.__class__.__name__}")
 
+    def reset_rng(self, rng: np.random.Generator = None):
+        raise Exception(f"reset_rng() method not implemented in {self.__class__.__name__}")
 
 
 class GeometricSensor(Sensor):

@@ -80,8 +80,8 @@ def track_not_updated(method):
     method.runner_callback_tag = 'track_not_updated'
     return method
 
-def mht_decisions(method):
-    method.runner_callback_tag = 'mht_decisions'
+def considered_decisions(method):
+    method.runner_callback_tag = 'considered_decisions'
     return method
 
 

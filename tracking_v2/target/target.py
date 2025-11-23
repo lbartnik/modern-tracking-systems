@@ -1,6 +1,4 @@
 import numpy as np
-from numpy.typing import ArrayLike
-from typing import List, Union
 
 
 __all__ = ['Target']
@@ -13,6 +11,10 @@ class TargetIdGenerator(object):
     def generate_target_id(cls):
         cls._next_measurement_id += 1
         return cls._next_measurement_id
+    
+    @classmethod
+    def reset(cls):
+        cls._next_measurement_id = 1
 
 
 

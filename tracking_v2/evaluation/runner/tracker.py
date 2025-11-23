@@ -73,7 +73,15 @@ class TrackerRunner:
         execute_callback(self.trace, stage, *args)
 
 
-    def run_one(self, n: int, T: float = 1):
+    def run_one(self, n: int, T: float = 1, seed: int = None):
+        if seed is not None:
+            rng = np.random.default_rng(seed=seed)
+
+            for sensor in self.sensors:
+                sensor.reset_rng(rng)
+            for target in self.targets:
+                target.reset_rng(rng)
+
         t = 0
         self.n = n
         
@@ -82,7 +90,7 @@ class TrackerRunner:
         for target in self.targets:
             target.cache(T, n)
             self._execute_callbacks('target_cached', target)
-                
+        
         self.tracker.reset()
 
         for t in np.arange(0, n) * T:
@@ -114,13 +122,6 @@ class TrackerRunner:
         self._execute_callbacks('before_many')
 
         for seed in seeds:
-            rng = np.random.default_rng(seed=seed)
-
-            for sensor in self.sensors:
-                sensor.reset_rng(rng)
-            for target in self.targets:
-                target.reset_rng(rng)
-
-            self.run_one(n, T)
+            self.run_one(n, T, seed)
         
         self._execute_callbacks('after_many')

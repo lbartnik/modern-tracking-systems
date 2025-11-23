@@ -44,9 +44,9 @@ class NearConstantVelocityTarget(Target):
                 integrating over this many steps.
         """
         if isinstance(velocity, (int, float)):
-            self.velocity = np.array([1, 0, 0]) * float(velocity)
+            self.velocity = np.array([1.0, 0.0, 0.0]) * float(velocity)
         else:
-            self.velocity =  np.asarray(velocity)
+            self.velocity =  np.asarray(velocity, dtype=np.float64)
 
         self.target_id = TargetIdGenerator.generate_target_id()
         self.spatial_dim = 3
@@ -54,7 +54,7 @@ class NearConstantVelocityTarget(Target):
         self.reset_seed(seed)
 
         assert noise_intensity >= 0
-        self.noise_intensity = noise_intensity
+        self.noise_intensity = float(noise_intensity)
         self.integration_steps_count = integration_steps_count
 
         assert report in ['position', 'position+velocity']
@@ -70,7 +70,7 @@ class NearConstantVelocityTarget(Target):
 
     @property
     def name(self):
-        if self.ncv is not None:
+        if self.seed is not None:
             return f"ncv_{self.seed}"
         else:
             return "ncv_random"
@@ -87,8 +87,8 @@ class NearConstantVelocityTarget(Target):
             np.ndarray: (n, 6) array of states.
         """
         states = []
-        current_pos = self.initial_position
-        vel = self.velocity
+        current_pos = self.initial_position.copy()
+        vel = self.velocity.copy()
 
         if isinstance(T, (int, float)):
             tm = np.arange(0, n) * T

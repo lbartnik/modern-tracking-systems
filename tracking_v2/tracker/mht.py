@@ -1,16 +1,22 @@
 import numpy as np
 import scipy as sp
+from collections import defaultdict
 from math import log, pi
-from typing import Callable, List
+from typing import Callable, Dict, List, Tuple
+
+import tracking_v2.callback as cb
 
 from ..np import as_column 
 from .base import Tracker, Track, initialize_velocity
 from ..kalman import linear_ncv, KalmanFilter
 from ..sensor import SensorMeasurement
+from ..target import Target
 from ..callback import execute_callback
+from ..util import to_df
 
 
-__all__ = ['MultiTargetTracker', 'InitializeTrack', 'MaybeNewTrack', 'UpdateTrack', 'TrackNotUpdated']
+__all__ = ['MultiTargetTracker', 'MhtDecisionClassifier', 'MhtEstimationMetrics',
+           'InitializeTrack', 'MaybeNewTrack', 'UpdateTrack', 'TrackNotUpdated']
 
 
 class TrackHypothesis:
@@ -50,12 +56,14 @@ class MaybeNewTrack(object):
 
 # decisions.append(('associate_to_track', t.llr + dLLR, t, m))
 class UpdateTrack(object):
-    def __init__(self, track: TrackHypothesis, measurement: SensorMeasurement, dLLR: float, NIS: float):
+    def __init__(self, track: TrackHypothesis, measurement: SensorMeasurement, dLLR: float, NIS: float, S: np.ndarray, S_det: float):
         self.track = track
         self.measurement = measurement
         self.dLLR = float(dLLR)
         self.LLR = float(track.llr + dLLR)
         self.NIS = float(NIS)
+        self.S = S
+        self.S_det = S_det
     
     def __repr__(self):
         return f"UpdateTrack({round(self.LLR, 2)}, {self.track.track_id}({self.track.target_id}), {self.measurement.measurement_id}({self.measurement.target_id}))"
@@ -128,10 +136,11 @@ class MultiTargetTracker(Tracker):
                 S_inv = np.linalg.inv(t.kf.S)
                 d2 = t.kf.innovation.T @ S_inv @ t.kf.innovation
                 
-                dLLR = log(self.P_d / self.B_FT) - dim/2*log(2*pi) - .5 * log(np.linalg.det(t.kf.S)) - .5 * d2
+                S_det = np.linalg.det(t.kf.S)
+                dLLR = log(self.P_d / self.B_FT) - dim/2*log(2*pi) - .5 * log(S_det) - .5 * d2
                 dLLR = float(dLLR)
                 
-                d = UpdateTrack(t, m, dLLR, NIS=d2)
+                d = UpdateTrack(t, m, dLLR, NIS=d2, S=t.kf.S, S_det=S_det)
                 decisions.append(d)
 
                 _execute_callbacks(callbacks, 'consider_update_track', self, d)
@@ -205,7 +214,7 @@ class MultiTargetTracker(Tracker):
         # sort with LLR descending
         decisions.sort(key=lambda x: x.LLR, reverse=True)
 
-        _execute_callbacks(callbacks, 'mht_decisions', self, decisions)
+        _execute_callbacks(callbacks, 'considered_decisions', self, decisions)
 
         new_tracks = []
         new_track_ids = set()
@@ -286,3 +295,319 @@ def _execute_callbacks(callbacks, stage: str, *args):
     if callbacks is not None:
         for cb in callbacks:
             execute_callback(cb, stage, *args)
+
+
+
+
+class MhtDecisionClassifier:
+    def __init__(self, debug: bool = False):
+        self.debug = debug
+        self.decisions_considered_in_this_iteration = None
+        self.decided_in_this_iteration = {}
+        self.time: float = None
+        self.track_to_target = {}
+        self.reset_one_counters()
+        self.reset_many_counters()
+    
+    @cb.before_one
+    def reset_one_counters(self):
+        self.inconsistent_init_one = 0
+        self.already_taken_one = 0
+        self.better_score_one = 0
+        self.track_to_target = {}
+
+        self.debug_trace = {}
+    
+    @cb.before_many
+    def reset_many_counters(self):
+        self.inconsistent_init_many = []
+        self.already_taken_many = []
+        self.better_score_many = []
+        self.track_per_target_many = []
+
+    def __repr__(self):
+        return f"MhtDecisionClassifier(inconsistent_init: {self.inconsistent_init_one}, better_score: {self.better_score_one}, already_taken: {self.already_taken_one})"
+
+    @cb.after_one
+    def record_trace(self):
+        run = len(self.already_taken_many)
+        self.inconsistent_init_many.append((run, self.inconsistent_init_one))
+        self.already_taken_many.append((run, self.already_taken_one))
+        self.better_score_many.append((run, self.better_score_one))
+
+        tracks_per_target = defaultdict(int)
+        for _, counts in self.track_to_target.items():
+            for target_id, _ in counts.items():
+                tracks_per_target[target_id] += 1
+        
+        for target_id, count in tracks_per_target.items():
+            self.track_per_target_many.append((run, target_id, count))
+    
+    @cb.after_many
+    def to_numpy(self):
+        self.inconsistent_init_many = np.asarray(self.inconsistent_init_many)
+        self.already_taken_many = np.asarray(self.already_taken_many)
+        self.better_score_many = np.asarray(self.better_score_many)
+
+    @cb.measurement_frame
+    def set_time(self, time: float, measurements: List):
+        self.time = float(time)
+
+    @cb.considered_decisions
+    def set_considered_decisions(self, tracker, considered_decisions: List):
+        assert len(considered_decisions) > 0
+        self.decisions_considered_in_this_iteration = considered_decisions
+        self.decided_in_this_iteration = {}
+
+    # TODO account for multiple tracks for the same target in the same run: track
+    #      drops and tracks maintained in parallel (will be possible once track
+    #      expiration is implemented)
+
+    def _append_debug(self, track_id: int, target_id: int, measurement: SensorMeasurement, reason: str = ''):
+        track_trace: List = self.debug_trace.setdefault(track_id, [])
+        track_trace.append((self.time, target_id, measurement.target_id, measurement.measurement_id,
+                            reason, self.already_taken_one, self.better_score_one))
+
+    @cb.after_one
+    def _debug_to_pandas(self):
+        self.debug_trace = {track_id: to_df(data, columns=['time', 'track_target', 'meas_target', 'meas_id',
+                                                           'reason', 'already_taken', 'better_score'])
+                            for track_id, data in self.debug_trace.items()}
+
+
+    @cb.initialize_track
+    def initialize_track(self, tracker, decision: InitializeTrack):
+        target_counts: Dict = self.track_to_target.setdefault(decision.track.track_id, {})
+        
+        if decision.measurement0.target_id == decision.measurement1.target_id:
+            target_counts[decision.measurement0.target_id] = 2
+        else:
+            self.inconsistent_init_one += 1
+            target_counts[decision.measurement0.target_id] = 1
+            target_counts[decision.measurement1.target_id] = 1
+
+        if self.debug:
+            self._append_debug(decision.track.track_id, decision.measurement0.target_id, decision.measurement0)
+            self._append_debug(decision.track.track_id, decision.measurement0.target_id, decision.measurement1)
+
+
+    @cb.update_track
+    def update_track(self, tracker, decision: UpdateTrack):
+        target_counts: Dict = self.track_to_target.setdefault(decision.track.track_id, {})
+        if len(target_counts) > 0:
+            track_target_id = max(target_counts, key=target_counts.get)
+        else:
+            track_target_id = None
+
+        #print(decision.track.track_id, track_target_id, target_counts)
+
+        # update counts after findings the most frequent target so far
+        target_counts[decision.measurement.target_id] = target_counts.get(decision.measurement.target_id, 0) + 1
+
+        # correct association: measurement target matches the track target
+        if track_target_id is None or decision.measurement.target_id == track_target_id:
+            assert decision.measurement.target_id not in self.decided_in_this_iteration
+            self.decided_in_this_iteration[decision.measurement.target_id] = decision
+            
+            if self.debug:
+                self._append_debug(decision.track.track_id, track_target_id, decision.measurement)
+            
+            return
+    
+        # misassociation: check if the target tracked by this track has been already
+        # assigned elsewhere
+        target_assigned_to: UpdateTrack = self.decided_in_this_iteration.get(track_target_id)
+
+        # measurement for this target was already assigned to a different track, so this track
+        # picks up one of the still unassigned measurements, generated for a different target
+        if target_assigned_to is not None:
+            assert decision.measurement.target_id not in self.decided_in_this_iteration
+            self.decided_in_this_iteration[decision.measurement.target_id] = decision
+
+            if self.debug:
+                d = decision
+                m = decision.measurement
+                t = decision.track
+                mm = target_assigned_to.measurement
+                print(f"{self.time}: misassociation (already taken): measurement {m.measurement_id} ({m.target_id}) to track " +
+                    f"{t.track_id} ({t.target_id}); score {d.LLR:.2f} {d.NIS:.2f}; matching measurement " +
+                    f"{mm.measurement_id} ({mm.target_id}) already assigned to track {target_assigned_to.track.track_id} " +
+                    f"({target_assigned_to.track.target_id})")
+            
+            # TODO excluding measurements already taken, we can still run the same set of checks
+            #      and assertions as run below for the other branch of the target_assigned_to condition
+
+            self.already_taken_one += 1
+            
+            if self.debug:
+                self._append_debug(decision.track.track_id, track_target_id, decision.measurement, 'already taken')
+            
+            return
+
+        # TODO on top of classifying mistakes, these checks look for anomalizes in decisions
+        #      taken by MHT; pull into a separate method "check for anomalies"; anomaly is a
+        #      mistake that doesn't make sense given what I know about the MHT algorithm: either
+        #      a coding error or an edge case that could be handled better, with more tailored
+        #      logic
+
+        # measurement for this track not yet assigned; check all potential associations for
+        # this track
+        def updates_for_this_track(x):
+            return isinstance(x, UpdateTrack) and x.track.track_id == decision.track.track_id
+        
+        decisions_for_track: List[UpdateTrack] = list(filter(updates_for_this_track, self.decisions_considered_in_this_iteration))
+        assert len(decisions_for_track) > 0
+
+        # if the wrong association does not have the maximum incremental LLR, it is inconsistent
+        # with the MHT algorithm design
+        decisions_for_track.sort(key=lambda x: x.dLLR, reverse=True)
+        assert decisions_for_track[0].measurement.measurement_id == decision.measurement.measurement_id
+
+        matching: List[UpdateTrack] = list(filter(lambda x: x.measurement.target_id == track_target_id, decisions_for_track))
+        assert len(matching) == 1
+
+        if self.debug:
+            d = decision
+            m = decision.measurement
+            t = decision.track
+            mm = matching[0].measurement
+            print(f"{self.time}: misassociation (better score): measurement {m.measurement_id} ({m.target_id}) to track " +
+                f"{t.track_id} ({t.target_id}); score {d.LLR:.2f} {d.NIS:.2f}; matching measurement {mm.measurement_id} " +
+                f"({mm.target_id}) has lower score {matching[0].LLR:.2f} {matching[0].NIS:.2f}")
+        
+        self.better_score_one += 1
+
+        if self.debug:
+            self._append_debug(decision.track.track_id, track_target_id, decision.measurement, 'better score')
+
+        # if by dLLR this measurement was best, it had to have the smallest NIS, too
+        decisions_for_track.sort(key=lambda x: x.NIS)
+        assert decisions_for_track[0].measurement.measurement_id == decision.measurement.measurement_id
+        
+        # same about absolute position error: if by dLLR this decision is best, it must be best by error, too
+        decisions_for_track.sort(key=lambda x: np.linalg.norm(x.track.kf.x_hat.squeeze()[:3] - x.measurement.z.squeeze()[:3]))
+        assert decisions_for_track[0].measurement.measurement_id == decision.measurement.measurement_id
+
+        assert decision.measurement.target_id not in self.decided_in_this_iteration
+        self.decided_in_this_iteration[decision.measurement.target_id] = decision
+
+        # TODO collect bad decisions across all iterations, tally by type, present tallies as metrics
+        
+        # TODO then use those metrics to evaluate a switch from greedy assignment to Hungarian
+
+
+class MhtEstimationMetrics:
+    def __init__(self):
+        # track ID -> target ID -> count
+        self.track_to_target: Dict[int, Dict[int, int]] = {}
+        # track ID -> list of (time, x_hat, P_hat)
+        self.track_trace: Dict[int, List[Tuple[float, np.ndarray, np.ndarray]]] = {}
+        self.targets: Dict[int, Tuple[np.ndarray, np.ndarray]] = {}
+        self.time: float = None
+        self.nees = {}
+
+    @cb.before_many
+    def before_many(self):
+        self.nees = {}
+
+    @cb.before_one
+    def before_one(self):
+        self.track_to_target = {}
+        self.track_trace = {}
+        self.targets = {}
+        self.time = None
+
+    @cb.target_cached
+    def cache_trajectory(self, target: Target):
+        self.targets.setdefault(target.target_id, (target.cached_time, target.cached_states))
+
+    @cb.measurement_frame
+    def measurement_frame(self, time: float, measurements: List[SensorMeasurement]):
+        self.time = time
+
+    @cb.initialize_track
+    def initialize_track(self, tracker, decision: InitializeTrack):
+        target_counters = self.track_to_target.setdefault(decision.track.track_id, {})
+
+        if decision.measurement0.target_id == decision.measurement1.target_id:
+            target_counters.setdefault(decision.measurement0.target_id, 2)
+        else:
+            target_counters.setdefault(decision.measurement0.target_id, 1)
+            target_counters.setdefault(decision.measurement0.target_id, 1)
+        
+        track_trace = self.track_trace.setdefault(decision.track.track_id, [])
+        track_trace.append((self.time, np.copy(decision.track.kf.x_hat), np.copy(decision.track.kf.P_hat)))
+            
+
+    @cb.update_track
+    def update_track(self, tracker, decision: UpdateTrack):
+        target_counters = self.track_to_target.setdefault(decision.track.track_id, {})
+        if decision.measurement.target_id in target_counters:
+            target_counters[decision.measurement.target_id] += 1
+        else:
+            target_counters[decision.measurement.target_id] = 1
+        
+        track_trace = self.track_trace.setdefault(decision.track.track_id, [])
+        track_trace.append((self.time, np.copy(decision.track.kf.x_hat), np.copy(decision.track.kf.P_hat)))
+
+    # since NEES requires truth data, we pick the target with the highest count
+    # of associated measurements
+    @cb.after_one
+    def calculate_nees(self):
+        #print(self.track_to_target)
+        all_nees = {}
+
+        for track_id, trace in self.track_trace.items():
+            # pick target with highest count
+            target_counts = self.track_to_target[track_id]
+            target_id = max(target_counts, key=target_counts.get)
+            
+            true_tm, true_x = self.targets[target_id]
+
+            tm = np.asarray([x[0] for x in trace])
+            x_hat = np.asarray([x[1] for x in trace])
+            P_hat = np.asarray([x[2] for x in trace])
+
+            # extract target positions matching recorded track updates            
+            i = np.isin(true_tm, tm)
+            true_pos = true_x[i, :3]
+            assert len(true_pos) == len(x_hat), f"{len(true_pos)} == {len(x_hat)}"
+
+            x_hat, P_hat = np.asarray(x_hat), np.asarray(P_hat)
+            P_inv = np.linalg.inv(P_hat[:, :3, :3])
+
+            diff = x_hat[:, :3] - np.expand_dims(true_pos, axis=-1)
+            nees = np.matmul(np.matmul(diff.transpose(0, 2, 1), P_inv), diff)
+            
+            all_nees.setdefault(target_id, []).append((tm, nees.squeeze()))
+        
+        # accumulate over many runs
+        for target_id, nees in all_nees.items():
+            self.nees.setdefault(target_id, []).extend(nees)
+    
+    @cb.after_many
+    def after_many(self):
+        # construct a time array that covers the full timeline across all targets and tracks
+        all_tm = []
+        for _, all_recorded_nees in self.nees.items():
+            for tm, _ in all_recorded_nees:
+                all_tm.append(tm.squeeze())
+
+        all_tm = np.sort(np.unique(np.concatenate(all_tm)))
+
+
+        # collect all tracks into arrays alinged with all_tm
+        nees_per_target = {}
+
+        for target_id, all_recorded_nees in self.nees.items():
+            
+            aligned_nees = np.full((len(all_tm), len(all_recorded_nees)), np.nan)
+            for col, (tm, individual_nees) in enumerate(all_recorded_nees):
+                row = np.isin(all_tm, tm)
+                aligned_nees[row, col] = individual_nees
+            
+            nees_per_target[target_id] = aligned_nees
+        
+        self.nees = nees_per_target
+
+                

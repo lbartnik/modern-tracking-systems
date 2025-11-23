@@ -146,9 +146,9 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
     lower = np.mean(mean_score < ci_mean[0])
     upper = np.mean(ci_mean[1] < mean_score)
     center = 1 - lower - upper
-    h1.add_annotation(text=f"{round(lower*100, 2)}%", xref="x domain", yref="y domain", x=0, y=1, showarrow=False)
-    h1.add_annotation(text=f"{round(center*100, 2)}%", xref="x domain", yref="y domain", x=.5, y=1, showarrow=False)
-    h1.add_annotation(text=f"{round(upper*100, 2)}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
+    h1.add_annotation(text=f"{lower*100:.2f}%", xref="x domain", yref="y domain", x=0, y=1, showarrow=False)
+    h1.add_annotation(text=f"{center*100:.2f}%", xref="x domain", yref="y domain", x=.5, y=1, showarrow=False)
+    h1.add_annotation(text=f"{upper*100:.2f}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
 
 
     # -- histogram of all data
@@ -159,9 +159,9 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
     lower = np.mean(scores.reshape(-1) < ci_qs[0])
     upper = np.mean(ci_qs[1] < scores.reshape(-1))
     center = 1 - lower - upper
-    h2.add_annotation(text=f"{round(lower*100, 2)}%", xref="x domain", yref="y domain", x=-.05, y=1, showarrow=False)
-    h2.add_annotation(text=f"{round(center*100, 2)}%", xref="x domain", yref="y domain", x=.2, y=1, showarrow=False)
-    h2.add_annotation(text=f"{round(upper*100, 2)}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
+    h2.add_annotation(text=f"{lower*100:.2f}%", xref="x domain", yref="y domain", x=-.05, y=1, showarrow=False)
+    h2.add_annotation(text=f"{center*100:.2f}%", xref="x domain", yref="y domain", x=.2, y=1, showarrow=False)
+    h2.add_annotation(text=f"{upper*100:.2f}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
 
 
     # --- mean CDF
@@ -175,7 +175,7 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
     mean_cdf.add_trace(go.Scatter(x=x, y=ecdf_y, name='ECDF', legendgroup='ecdf', showlegend=True, line_color="#31c3fd"))
     mean_cdf.add_trace(go.Scatter(x=x, y=cdf_y, name='CDF', legendgroup='cdf', showlegend=True, line_color="#25c420"))
     mean_cdf.add_trace(go.Scatter(x=x, y=cdf_diff, name='ECDF - CDF', legendgroup='cdf_diff', showlegend=True, line_color="#830606"), secondary_y=True)
-    mean_cdf.add_annotation(text=f"diff area: {round(cdf_diff_area, 3)}", xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
+    mean_cdf.add_annotation(text=f"diff area: {cdf_diff_area:.3f}", xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
 
 
     # --- all CDF
@@ -190,7 +190,7 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
     all_cdf.add_trace(go.Scatter(x=x, y=ecdf_y, name='ECDF', legendgroup='ecdf', showlegend=False, line_color="#31c3fd"))
     all_cdf.add_trace(go.Scatter(x=x, y=cdf_y, name='CDF', legendgroup='cdf', showlegend=False, line_color="#25c420"))
     all_cdf.add_trace(go.Scatter(x=x, y=cdf_diff, name='ECDF - CDF', legendgroup='cdf_diff', showlegend=False, line_color="#830606"), secondary_y=True)
-    all_cdf.add_annotation(text=f"diff area: {round(cdf_diff_area, 3)}  full area: {round(cdf_full_area, 3)}  frac: {round(cdf_diff_area / cdf_full_area, 4) * 100}%",
+    all_cdf.add_annotation(text=f"diff area: {cdf_diff_area:.3f}  full area: {cdf_full_area:.3f}  frac: {cdf_diff_area / cdf_full_area * 100:.3f}%",
                            xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
 
 
