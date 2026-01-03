@@ -1,0 +1,5 @@
+1. notebook "09 MHT State Estimation Metrics": test the difference between mean NEES
+   across N runs and matching Chi-squared for a sequence of R_sigma
+
+2. calibrate autopilot target to follow a straight line to test MHT with that
+   target rather than near-constant velocity

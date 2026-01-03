@@ -89,16 +89,26 @@ def plot_3d(runner, skip=0, run=0):
 
 
 
-def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) -> go.Figure:
+def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=0, skip_outlayers: float = None) -> go.Figure:
     scores = score.scores[:, skip:]
     dim    = score.dim
     type   = score.type
-    
+
+    if skip_outlayers is not None:
+        assert skip_outlayers < 1, f"skip_outlayers must be a quantile, less than 1, but got {skip_outlayers}"
+        cutoff = np.nanquantile(scores.reshape(-1), skip_outlayers)
+        scores[scores > cutoff] = np.nan
+
+    # flatten and remove NaNs
+    flat_scores = scores.reshape(-1)
+    flat_scores = flat_scores[~np.isnan(flat_scores)]
+
+
     # confidence interval for the mean
     run_count = scores.shape[0]
     ci_mean = sp.stats.chi2.ppf([0.025, 0.975], run_count * dim) / run_count
 
-    mean_score = np.mean(scores, axis=0)
+    mean_score = np.nanmean(scores, axis=0)
 
 
     # confidence interval for individual runs
@@ -130,8 +140,8 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
     tm.add_trace(go.Scatter(x=[None], y=[None], mode='lines', line=dict(color='green', dash='dash'), name='95% one run', showlegend=True))
 
     # observed quantiles
-    q025 = np.quantile(scores, .025, axis=0)
-    q975 = np.quantile(scores, .975, axis=0)
+    q025 = np.nanquantile(scores, .025, axis=0)
+    q975 = np.nanquantile(scores, .975, axis=0)
 
     q_color = 'rgba(143,188,143, 0.5)'
     tm.add_trace(go.Scatter(x=x, y=q025, fill=None, mode='lines', marker_color=q_color, showlegend=False, legendgroup='conf_int'))
@@ -152,12 +162,12 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
 
 
     # -- histogram of all data
-    h2.add_trace(go.Histogram(x=scores.reshape(-1), nbinsx=40, name='data'))
+    h2.add_trace(go.Histogram(x=flat_scores, nbinsx=40, name='data'))
     h2.add_vline(x=ci_qs[0], line_width=.5, line_dash="dash", line_color="red")
     h2.add_vline(x=ci_qs[1], line_width=.5, line_dash="dash", line_color="red")
 
-    lower = np.mean(scores.reshape(-1) < ci_qs[0])
-    upper = np.mean(ci_qs[1] < scores.reshape(-1))
+    lower = np.nanmean(flat_scores < ci_qs[0])
+    upper = np.nanmean(ci_qs[1] < flat_scores)
     center = 1 - lower - upper
     h2.add_annotation(text=f"{lower*100:.2f}%", xref="x domain", yref="y domain", x=-.05, y=1, showarrow=False)
     h2.add_annotation(text=f"{center*100:.2f}%", xref="x domain", yref="y domain", x=.2, y=1, showarrow=False)
@@ -179,8 +189,8 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=25) 
 
 
     # --- all CDF
-    x, step = np.linspace(0, scores.reshape(-1).max(), 200, retstep=True)
-    ecdf = sp.stats.ecdf(scores.reshape(-1))
+    x, step = np.linspace(0, flat_scores.max(), 200, retstep=True)
+    ecdf = sp.stats.ecdf(flat_scores)
     ecdf_y = ecdf.cdf.evaluate(x)
     cdf_y = sp.stats.chi2.cdf(x, 3)
     cdf_diff = ecdf_y - cdf_y
