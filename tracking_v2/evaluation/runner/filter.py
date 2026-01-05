@@ -8,7 +8,7 @@ from ...np import as_column
 
 
 
-__all__ = ['FilterRunner', 'evaluate_nees', 'evaluate_runner']
+__all__ = ['FilterRunner', 'evaluate_nees', 'evaluate_runner', 'evaluate_error']
 
 
 
