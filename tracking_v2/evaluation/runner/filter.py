@@ -336,4 +336,4 @@ def nscore_anderson_darling(e: NScoreEvaluationResult, skip: int = 25):
     all_ad     = anderson_statistic(flat_scores, dist=sp.stats.chi2, fit=False, params=(dim,))
     all_pvalue = anderson_darling_pvalue(all_ad)
 
-    return mean_ad, mean_pvalue, all_ad, all_pvalue
+    return float(mean_ad), mean_pvalue, float(all_ad), all_pvalue
