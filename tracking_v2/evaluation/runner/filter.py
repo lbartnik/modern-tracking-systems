@@ -1,14 +1,15 @@
 import numpy as np
 import scipy as sp
 from numpy.typing import ArrayLike
-from typing import List
+from statsmodels.stats.diagnostic import anderson_statistic
 
 from .base import Runner
+from ..util import anderson_darling_pvalue
 from ...np import as_column
 
 
 
-__all__ = ['FilterRunner', 'evaluate_nees', 'evaluate_runner', 'evaluate_error']
+__all__ = ['FilterRunner', 'evaluate_nees', 'evaluate_runner', 'evaluate_error', 'nscore_anderson_darling']
 
 
 
@@ -229,23 +230,6 @@ def evaluate_nees(x_hat, P_hat, truth):
     return NScoreEvaluationResult(scores, dim, 'NEES')
 
 
-def evaluate_error(x_hat: np.ndarray, truth: np.ndarray) -> np.ndarray:
-    # if data comes from single run, add a dimension in the front
-    if len(x_hat.shape) == 3:
-        x_hat = np.expand_dims(x_hat, 0)
-
-    # the rest of the code expects 4-dimensional data:
-    # MC-runs x run-length x spatial-dimensions x (1 | spatial-dimensions)
-    assert len(x_hat.shape) == 4
-
-    truth = _resolve_truth_shape(truth, x_hat)
-    
-    diff = x_hat - truth
-    err_sq = np.matmul(diff.transpose(0, 1, 3, 2), diff)
-    err_sq = np.atleast_2d(err_sq.squeeze())
-    return np.sqrt(err_sq)
-
-
 
 def evaluate_nis(v: ArrayLike, S: ArrayLike) -> NScoreEvaluationResult:    
     # if data comes from single run, add a dimension in the front
@@ -265,6 +249,25 @@ def evaluate_nis(v: ArrayLike, S: ArrayLike) -> NScoreEvaluationResult:
     scores = np.matmul(np.matmul(v.transpose(0, 1, 3, 2), S_inv), v).squeeze()
     scores = np.atleast_2d(scores)
     return NScoreEvaluationResult(scores, dim, 'NIS')
+
+
+
+def evaluate_error(x_hat: np.ndarray, truth: np.ndarray) -> np.ndarray:
+    # if data comes from single run, add a dimension in the front
+    if len(x_hat.shape) == 3:
+        x_hat = np.expand_dims(x_hat, 0)
+
+    # the rest of the code expects 4-dimensional data:
+    # MC-runs x run-length x spatial-dimensions x (1 | spatial-dimensions)
+    assert len(x_hat.shape) == 4
+
+    truth = _resolve_truth_shape(truth, x_hat)
+    
+    diff = x_hat - truth
+    err_sq = np.matmul(diff.transpose(0, 1, 3, 2), diff)
+    err_sq = np.atleast_2d(err_sq.squeeze())
+    return np.sqrt(err_sq)
+
 
 
 
@@ -313,5 +316,24 @@ def evaluate_runner(runner: FilterRunner):
     )
 
 
-def nees_ci(runner: FilterRunner, qs: List[float] = [.025, .975]):
-    return sp.stats.chi2.ppf(qs, runner.m * runner.dim) / runner.m
+
+def nscore_anderson_darling(e: NScoreEvaluationResult, skip: int = 25):
+    scores    = e.scores[:, skip:]
+    dim       = e.dim
+    run_count = scores.shape[0]
+
+    mean_score = np.nanmean(scores, axis=0)
+
+    a           = dim * run_count / 2
+    loc         = 0
+    scale       = 2 / run_count
+    mean_ad     = anderson_statistic(mean_score, dist=sp.stats.gamma, fit=False, params=(a, loc, scale))
+    mean_pvalue = anderson_darling_pvalue(mean_ad)
+
+    flat_scores = scores.reshape(-1)
+    flat_scores = flat_scores[~np.isnan(flat_scores)]
+
+    all_ad     = anderson_statistic(flat_scores, dist=sp.stats.chi2, fit=False, params=(dim,))
+    all_pvalue = anderson_darling_pvalue(all_ad)
+
+    return mean_ad, mean_pvalue, all_ad, all_pvalue

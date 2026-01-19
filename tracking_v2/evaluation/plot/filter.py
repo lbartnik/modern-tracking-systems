@@ -1,7 +1,8 @@
 import numpy as np
 import scipy as sp
-from typing import Dict, List
 import pandas as pd
+from typing import Dict, List
+from statsmodels.stats.diagnostic import anderson_statistic
 
 import plotly.express as ex
 import plotly.graph_objects as go
@@ -9,6 +10,7 @@ from plotly.subplots import make_subplots
 
 from .filter_stonesoup import plot_track
 from ..runner.filter import NScoreEvaluationResult, FilterRunner, evaluate_runner
+from ..util import anderson_darling_pvalue
 from ...util import SubFigure, to_df, colorscale, display
 
 
@@ -106,7 +108,7 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=0, s
 
     # confidence interval for the mean
     run_count = scores.shape[0]
-    ci_mean = sp.stats.chi2.ppf([0.025, 0.975], run_count * dim) / run_count
+    ci_mean = sp.stats.gamma.ppf([0.025, 0.975], a=dim * run_count / 2, scale=2 / run_count)
 
     mean_score = np.nanmean(scores, axis=0)
 
@@ -115,7 +117,7 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=0, s
     ci_qs = sp.stats.chi2.ppf([0.025, 0.975], dim)
 
     fig = make_subplots(rows=3, cols=2, specs=[[{"colspan": 2}, None],
-                                               [{}, {}],
+                                               [{"secondary_y": True}, {}],
                                                [{"secondary_y": True}, {"secondary_y": True}]],
                         subplot_titles=[f'{type} vs. time', f'Mean {type}', f'All {type}', 'Mean CDF', 'All CDF'])
     tm = SubFigure(fig, 1, 1)
@@ -146,10 +148,10 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=0, s
     q_color = 'rgba(143,188,143, 0.5)'
     tm.add_trace(go.Scatter(x=x, y=q025, fill=None, mode='lines', marker_color=q_color, showlegend=False, legendgroup='conf_int'))
     tm.add_trace(go.Scatter(x=x, y=q975, fill='tonexty', mode='lines', fillcolor=q_color, line_color=q_color, legendgroup='conf_int', name='95% data'))
-        
-    
+
+
     # -- histogram of mean
-    h1.add_trace(go.Histogram(x=mean_score, nbinsx=40, name='mean'))
+    h1.add_trace(go.Histogram(x=mean_score, nbinsx=40, name='mean', histnorm='probability density'))
     h1.add_vline(x=ci_mean[0], line_width=.5, line_dash="dash", line_color="red")
     h1.add_vline(x=ci_mean[1], line_width=.5, line_dash="dash", line_color="red")
 
@@ -160,9 +162,14 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=0, s
     h1.add_annotation(text=f"{center*100:.2f}%", xref="x domain", yref="y domain", x=.5, y=1, showarrow=False)
     h1.add_annotation(text=f"{upper*100:.2f}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
 
+    # scaled chi2, because this is histogram over means
+    x = np.linspace(np.min(mean_score), np.max(mean_score), 100)
+    h1.add_trace(go.Scatter(x=x, y=sp.stats.gamma.pdf(x, a=dim * run_count / 2, scale=2 / run_count), mode='lines',
+                            line_color="#bb3434", legendgroup='pdf', name='pdf'))
+
 
     # -- histogram of all data
-    h2.add_trace(go.Histogram(x=flat_scores, nbinsx=40, name='data'))
+    h2.add_trace(go.Histogram(x=flat_scores, nbinsx=40, name='data', histnorm='probability density'))
     h2.add_vline(x=ci_qs[0], line_width=.5, line_dash="dash", line_color="red")
     h2.add_vline(x=ci_qs[1], line_width=.5, line_dash="dash", line_color="red")
 
@@ -173,34 +180,47 @@ def plot_nscore(score: NScoreEvaluationResult, title: str = None, skip: int=0, s
     h2.add_annotation(text=f"{center*100:.2f}%", xref="x domain", yref="y domain", x=.2, y=1, showarrow=False)
     h2.add_annotation(text=f"{upper*100:.2f}%", xref="x domain", yref="y domain", x=1, y=1, showarrow=False)
 
+    x = np.linspace(np.min(flat_scores), np.max(flat_scores), 100)
+    h2.add_trace(go.Scatter(x=x, y=sp.stats.chi2.pdf(x, dim), mode='lines', legendgroup='pdf', name='pdf',
+                            line_color="#bb3434", showlegend=False))
+
 
     # --- mean CDF
-    x, step = np.linspace(0, mean_score.reshape(-1).max(), 200, retstep=True)
+    x = np.linspace(0, mean_score.reshape(-1).max(), 200)
     ecdf = sp.stats.ecdf(mean_score.reshape(-1))
     ecdf_y = ecdf.cdf.evaluate(x)
-    cdf_y = sp.stats.chi2.cdf(x * 100, 300)
+    # scaled chi2, because this is over means
+    cdf_y = sp.stats.gamma.cdf(x, a=dim * run_count / 2, scale=2 / run_count)
     cdf_diff = ecdf_y - cdf_y
-    cdf_diff_area = np.sum(np.abs(cdf_diff)) * step
 
     mean_cdf.add_trace(go.Scatter(x=x, y=ecdf_y, name='ECDF', legendgroup='ecdf', showlegend=True, line_color="#31c3fd"))
     mean_cdf.add_trace(go.Scatter(x=x, y=cdf_y, name='CDF', legendgroup='cdf', showlegend=True, line_color="#25c420"))
     mean_cdf.add_trace(go.Scatter(x=x, y=cdf_diff, name='ECDF - CDF', legendgroup='cdf_diff', showlegend=True, line_color="#830606"), secondary_y=True)
-    mean_cdf.add_annotation(text=f"diff area: {cdf_diff_area:.3f}", xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
+
+    # goodness of fit
+    a     = dim * run_count / 2
+    loc   = 0
+    scale = 2 / run_count
+    ad_stat = anderson_statistic(mean_score, dist=sp.stats.gamma, fit=False, params=(a, loc, scale))
+
+    mean_cdf.add_annotation(text=f"Anderson-Darling: {ad_stat:.2f}   p-value: {anderson_darling_pvalue(ad_stat):.2e}",
+                            xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
 
 
     # --- all CDF
-    x, step = np.linspace(0, flat_scores.max(), 200, retstep=True)
+    x = np.linspace(0, flat_scores.max(), 200)
     ecdf = sp.stats.ecdf(flat_scores)
     ecdf_y = ecdf.cdf.evaluate(x)
-    cdf_y = sp.stats.chi2.cdf(x, 3)
+    cdf_y = sp.stats.chi2.cdf(x, dim)
     cdf_diff = ecdf_y - cdf_y
-    cdf_diff_area = np.sum(np.abs(cdf_diff)) * step
-    cdf_full_area = np.sum(np.abs(cdf_y)) * step
 
     all_cdf.add_trace(go.Scatter(x=x, y=ecdf_y, name='ECDF', legendgroup='ecdf', showlegend=False, line_color="#31c3fd"))
     all_cdf.add_trace(go.Scatter(x=x, y=cdf_y, name='CDF', legendgroup='cdf', showlegend=False, line_color="#25c420"))
     all_cdf.add_trace(go.Scatter(x=x, y=cdf_diff, name='ECDF - CDF', legendgroup='cdf_diff', showlegend=False, line_color="#830606"), secondary_y=True)
-    all_cdf.add_annotation(text=f"diff area: {cdf_diff_area:.3f}  full area: {cdf_full_area:.3f}  frac: {cdf_diff_area / cdf_full_area * 100:.3f}%",
+
+    # goodness of fit
+    ad_stat = anderson_statistic(flat_scores, dist=sp.stats.chi2, fit=False, params=(dim,))
+    all_cdf.add_annotation(text=f"Anderson-Darling: {ad_stat:.2f}   p-value: {anderson_darling_pvalue(ad_stat):.2e}",
                            xref="x domain", yref="y domain", x=0, y=0, showarrow=False)
 
 
