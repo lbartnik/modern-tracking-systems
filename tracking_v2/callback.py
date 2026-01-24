@@ -1,9 +1,8 @@
 import inspect
 from typing import Callable, Dict, List
 
-__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update', 'after_estimate', 'Runner',
-           'execute_user_callbacks']
-
+__all__ = ['before_one', 'after_one', 'before_many', 'after_many', 'after_update',
+           'after_estimate', 'Runner', 'execute_user_callbacks']
 
 
 def before_one(method):

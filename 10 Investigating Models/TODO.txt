@@ -3,3 +3,5 @@
 
 2. calibrate autopilot target to follow a straight line to test MHT with that
    target rather than near-constant velocity
+
+3. should Autopilot scale random disturbance with the norm of velocity?

@@ -324,6 +324,7 @@ class MhtDecisionClassifier:
         self.already_taken_many = []
         self.better_score_many = []
         self.track_per_target_many = []
+        self.misassignment_in_time = defaultdict(float)
 
     def __repr__(self):
         return f"MhtDecisionClassifier(inconsistent_init: {self.inconsistent_init_one}, better_score: {self.better_score_one}, already_taken: {self.already_taken_one})"
@@ -348,6 +349,12 @@ class MhtDecisionClassifier:
         self.inconsistent_init_many = np.asarray(self.inconsistent_init_many)
         self.already_taken_many = np.asarray(self.already_taken_many)
         self.better_score_many = np.asarray(self.better_score_many)
+        self.track_per_target_many = np.asarray(self.track_per_target_many)
+        
+        self.misassignment_in_time = np.asarray((
+            np.asarray(self.misassignment_in_time.keys()),
+            np.asarray(self.misassignment_in_time.values())
+        )).T
 
     @cb.measurement_frame
     def set_time(self, time: float, measurements: List):
@@ -416,6 +423,8 @@ class MhtDecisionClassifier:
     
         # misassociation: check if the target tracked by this track has been already
         # assigned elsewhere
+        self.misassignment_in_time[self.time] += 1
+
         target_assigned_to: UpdateTrack = self.decided_in_this_iteration.get(track_target_id)
 
         # measurement for this target was already assigned to a different track, so this track
@@ -494,6 +503,18 @@ class MhtDecisionClassifier:
         # TODO collect bad decisions across all iterations, tally by type, present tallies as metrics
         
         # TODO then use those metrics to evaluate a switch from greedy assignment to Hungarian
+    
+    def to_df(self):
+        init = self.inconsistent_init_many[:, 1]
+        at   = self.already_taken_many[:, 1]
+        bs   = self.better_score_many[:, 1]
+        tpt  = self.track_per_target_many[:, 2]
+
+
+        metrics = (init.mean(), np.std(init), np.max(init), at.mean(), np.std(at), np.max(at),
+                   bs.mean(), np.std(bs), np.max(bs), tpt.mean(), np.std(tpt), np.max(tpt))
+        return to_df([metrics], columns=['init', 'init.std', 'init.max', 'at', 'at.std', 'at.max',
+                                         'bs', 'bs.std', 'bs.max', 'tpt', 'tpt.std', 'tpt.max'])
 
 
 class MhtEstimationMetrics:

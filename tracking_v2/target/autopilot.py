@@ -4,7 +4,7 @@ from typing import List, Union
 import plotly.graph_objects as go
 from copy import deepcopy
 
-from .target import Target
+from .target import Target, TargetIdGenerator
 from ..util import to_df
 
 
@@ -54,14 +54,14 @@ class Turn:
 # pos - initial position
 # heading - initial heading
 # commands - autopilot path
-def _populate_coordinates(pos: ArrayLike, heading: float, commands: List[Union[Straight, Turn]]) -> List[Union[Straight, Turn]]:
+def _populate_coordinates(pos: ArrayLike, heading_rad: float, commands: List[Union[Straight, Turn]]) -> List[Union[Straight, Turn]]:
     pos = np.asarray(pos)
      
     for command in commands:
         if isinstance(command, Straight):
             command.p0 = pos
 
-            pos = pos + _heading_to_rotation(heading) @ np.array([command.distance_m, 0, 0])
+            pos = pos + _heading_to_rotation(heading_rad) @ np.array([command.distance_m, 0, 0])
             command.p1 = pos
         
         elif isinstance(command, Turn):
@@ -69,16 +69,16 @@ def _populate_coordinates(pos: ArrayLike, heading: float, commands: List[Union[S
             turn   = command.turn_deg / 180.0 * np.pi
 
             if command.left:
-                command.alpha0 = heading - np.pi/2
-                command.center = pos + _heading_to_rotation(heading + np.pi/2) @ radius
-                heading += turn
-                command.alpha1 = heading - np.pi/2
+                command.alpha0 = heading_rad - np.pi/2
+                command.center = pos + _heading_to_rotation(heading_rad + np.pi/2) @ radius
+                heading_rad += turn
+                command.alpha1 = heading_rad - np.pi/2
 
             else:
-                command.alpha0 = heading + np.pi/2
-                command.center = pos + _heading_to_rotation(heading - np.pi/2) @ radius                
-                heading -= turn
-                command.alpha1 = heading + np.pi/2
+                command.alpha0 = heading_rad + np.pi/2
+                command.center = pos + _heading_to_rotation(heading_rad - np.pi/2) @ radius                
+                heading_rad -= turn
+                command.alpha1 = heading_rad + np.pi/2
 
                 if command.alpha1 < 0:
                     a1 = np.remainder(command.alpha1, 2*np.pi)
@@ -90,7 +90,7 @@ def _populate_coordinates(pos: ArrayLike, heading: float, commands: List[Union[S
         else:
             raise Exception("Unsupported command")
         
-        heading = np.remainder(heading, 2*np.pi)
+        heading_rad = np.remainder(heading_rad, 2*np.pi)
 
     return commands
 
@@ -193,7 +193,8 @@ def _project_on_path(position: ArrayLike, commands: List[Union[Straight, Turn]],
 
 
 
-def _plot_path(commands: List[Union[Straight, Turn]], position: ArrayLike = None, a: float = 1, delta_dist: float = 1):
+def _plot_path(commands: List[Union[Straight, Turn]], position: ArrayLike = None, a: float = 1, delta_dist: float = 1,
+               fig: go.Figure = None):
     x, y = [], []
     pts_x, pts_y = [], []
 
@@ -214,11 +215,13 @@ def _plot_path(commands: List[Union[Straight, Turn]], position: ArrayLike = None
         else:
             raise Exception("Unsupported command")
     
-    fig = go.Figure()
+    if fig is None:
+        fig = go.Figure()
+    
     fig.add_trace(go.Scatter(x=x, y=y, name='path'))
     fig.add_trace(go.Scatter(x=pts_x, y=pts_y, mode='markers', name='waypoints'))
 
-    # if the current position of the mover is provide, plot it against its hyperbolic
+    # if the current position of the mover is provided, plot it against its hyperbolic
     # trajectory
     if position is not None:
         d, p, q, x_unit, y_unit = _project_on_path(position, commands, delta_dist)
@@ -257,10 +260,12 @@ class AutopilotTarget(Target):
     def __init__(self, commands: List[Union[Straight, Turn]], max_turn_rate_deg_s: float = 5,
                  mass_kg: float = 1000, thrust_N: float = 2000, drag_coefficient: float = 0.05,
                  noise_intensity: float = .01, integration_steps_count: int = 20,
-                 seed: int = None):
+                 seed: int = None, initial_position: ArrayLike = [0, 0, 0], initial_heading_deg: float = 0):
         
-        self.initial_position = np.array([0, 0, 0])
-        self.initial_heading  = 0
+        self.target_id = TargetIdGenerator.generate_target_id()
+
+        self.initial_position = np.asarray(initial_position)
+        self.initial_heading  = initial_heading_deg * np.pi / 180
         self.commands = _populate_coordinates(self.initial_position, self.initial_heading, deepcopy(commands))
         
         self.noise_intensity = noise_intensity

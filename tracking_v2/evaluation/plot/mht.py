@@ -28,7 +28,7 @@ class MhtInspectCallback:
         # used, considered: [mht.UpdateTrack]
         self.update_to_meas: Dict[int, Dict[float, Tuple[List[mht.UpdateTrack],
                                                          List[mht.UpdateTrack]]]] = {}
-        self.track_to_target = {}        
+        self.track_to_target = {}
 
     @cb.target_cached
     def target_cached(self, target: Target):
@@ -72,9 +72,12 @@ class MhtInspectCallback:
 
     @cb.before_one
     def reset(self):
+        self.time = []
+        self.targets = {}
         self.measurements = {}
         self.tracks = {}
-        self.time = []
+        self.update_to_meas = {}
+        self.track_to_target = {}
 
     @cb.after_one
     def create_arrays(self):
